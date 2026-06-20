@@ -124,15 +124,25 @@ class MatchResult:
     reasons: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ChatMessage:
+    sender_token: str
+    sender_handle: str
+    text: str
+    timestamp: float
+
+
 class MatchEngine:
     """Framework-free core. The FastAPI routes are thin wrappers over this."""
 
     def __init__(self, ai_threshold: float = AI_THRESHOLD) -> None:
         self._profiles: dict[str, Profile] = {}     # token -> Profile
         self._results: dict[str, MatchResult] = {}   # token -> result
+        self._chat_rooms: dict[str, list[ChatMessage]] = {} # room_id -> messages
         self._round_done = False
         self._ai_threshold = ai_threshold
         self._ai = None  # lazily loaded; the model is expensive to construct
+        self._load_db()
 
     # -- submission ------------------------------------------------------
     def submit(self, payload: dict[str, Any]) -> str:
@@ -185,6 +195,7 @@ class MatchEngine:
         self._results.setdefault(token, MatchResult(matched=False))
         self._round_done = False
         logger.info(f"[ENGINE] Profile submitted: handle='{handle}', gender={demo.get('my_gender')}, target={demo.get('target_gender')}, age={self._profiles[token].age}, token={token[:8]}...")
+        self._save_db()
         return token
 
     # -- the one batch round --------------------------------------------
@@ -267,6 +278,7 @@ class MatchEngine:
             "unmatched": len(profiles) - 2 * pairs,
         }
         logger.info(f"[ENGINE] Match round completed. Summary: {summary}")
+        self._save_db()
         return summary
 
     @staticmethod
@@ -295,6 +307,146 @@ class MatchEngine:
             "pairs": matched // 2,
             "round_done": self._round_done,
         }
+
+    def send_message(self, token: str, text: str) -> bool:
+        profile = self._profiles.get(token)
+        if not profile:
+            raise ValueError("unknown token")
+        res = self._results.get(token)
+        if not res or not res.matched:
+            raise ValueError("user is not matched")
+        room_id = res.connection_code
+        self._chat_rooms.setdefault(room_id, [])
+        msg = ChatMessage(
+            sender_token=token,
+            sender_handle=profile.handle,
+            text=text,
+            timestamp=time.time()
+        )
+        self._chat_rooms[room_id].append(msg)
+        logger.info(f"[ENGINE] Chat message sent: from='{profile.handle}' room='{room_id}' text='{text}'")
+        self._save_db()
+        return True
+
+    def get_messages(self, token: str) -> list[dict]:
+        profile = self._profiles.get(token)
+        if not profile:
+            return []
+        res = self._results.get(token)
+        if not res or not res.matched:
+            return []
+        room_id = res.connection_code
+        messages = self._chat_rooms.get(room_id, [])
+        return [
+            {
+                "sender": "sent" if m.sender_token == token else "received",
+                "text": m.text,
+                "sender_handle": m.sender_handle
+            }
+            for m in messages
+        ]
+
+    def _save_db(self):
+        try:
+            db_path = os.path.join(os.path.dirname(__file__), "db.json")
+            data = {
+                "profiles": {},
+                "results": {},
+                "chat_rooms": {},
+                "round_done": self._round_done
+            }
+            for token, p in self._profiles.items():
+                data["profiles"][token] = {
+                    "user_id": p.user_id,
+                    "token": p.token,
+                    "handle": p.handle,
+                    "last_name": p.last_name,
+                    "text": p.text,
+                    "wants": p.wants,
+                    "dealbreakers": p.dealbreakers,
+                    "my_gender": p.my_gender,
+                    "target_gender": p.target_gender,
+                    "age": p.age,
+                    "age_min": p.age_min,
+                    "age_max": p.age_max,
+                    "languages": p.languages,
+                    "vector": p.vector.tolist() if hasattr(p.vector, "tolist") else list(p.vector)
+                }
+            for token, res in self._results.items():
+                data["results"][token] = {
+                    "matched": res.matched,
+                    "peer_handle": res.peer_handle,
+                    "connection_code": res.connection_code,
+                    "score": res.score,
+                    "verdict": res.verdict,
+                    "reasons": res.reasons
+                }
+            for room_id, messages in self._chat_rooms.items():
+                data["chat_rooms"][room_id] = [
+                    {
+                        "sender_token": m.sender_token,
+                        "sender_handle": m.sender_handle,
+                        "text": m.text,
+                        "timestamp": m.timestamp
+                    }
+                    for m in messages
+                ]
+            import json
+            with open(db_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            logger.info("[ENGINE] Database successfully saved.")
+        except Exception as e:
+            logger.error(f"[ENGINE] Failed to save database: {e}")
+
+    def _load_db(self):
+        try:
+            db_path = os.path.join(os.path.dirname(__file__), "db.json")
+            if not os.path.exists(db_path):
+                return
+            import json
+            import numpy as np
+            with open(db_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self._round_done = data.get("round_done", False)
+            for token, p_data in data.get("profiles", {}).items():
+                self._profiles[token] = Profile(
+                    user_id=p_data["user_id"],
+                    token=p_data["token"],
+                    handle=p_data["handle"],
+                    last_name=p_data["last_name"],
+                    text=p_data["text"],
+                    wants=p_data["wants"],
+                    dealbreakers=p_data["dealbreakers"],
+                    my_gender=p_data["my_gender"],
+                    target_gender=p_data["target_gender"],
+                    age=p_data["age"],
+                    age_min=p_data["age_min"],
+                    age_max=p_data["age_max"],
+                    languages=p_data["languages"],
+                    vector=np.array(p_data["vector"], dtype=np.float32)
+                )
+            for token, res_data in data.get("results", {}).items():
+                self._results[token] = MatchResult(
+                    matched=res_data["matched"],
+                    peer_handle=res_data["peer_handle"],
+                    connection_code=res_data["connection_code"],
+                    score=res_data["score"],
+                    verdict=res_data["verdict"],
+                    reasons=res_data["reasons"]
+                )
+            for room_id, msgs_data in data.get("chat_rooms", {}).items():
+                self._chat_rooms[room_id] = [
+                    ChatMessage(
+                        sender_token=m["sender_token"],
+                        sender_handle=m["sender_handle"],
+                        text=m["text"],
+                        timestamp=m["timestamp"]
+                    )
+                    for m in msgs_data
+                ]
+            logger.info(f"[ENGINE] Database loaded successfully: {len(self._profiles)} profiles, {len(self._chat_rooms)} chat rooms.")
+        except Exception as e:
+            logger.error(f"[ENGINE] Failed to load database: {e}")
 
 
 ENGINE = MatchEngine()
@@ -335,6 +487,10 @@ try:
         demographics: Demographics = Demographics()
         matching_data: MatchingData = MatchingData()
 
+    class ChatSendPayload(BaseModel):
+        token: str
+        text: str
+
     app = FastAPI(title="Matching server (prototype_no_keys)")
 
     # The users API is a separate web origin, so the browser needs CORS.
@@ -365,6 +521,22 @@ try:
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True, "token": token}
+
+    @app.post("/chat/send")
+    def chat_send(payload: ChatSendPayload):
+        try:
+            ENGINE.send_message(payload.token, payload.text)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return {"ok": True}
+
+    @app.get("/chat/messages")
+    def chat_messages(token: str):
+        try:
+            messages = ENGINE.get_messages(token)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return {"ok": True, "messages": messages}
 
     @app.get("/result/{token}")
     def result(token: str):

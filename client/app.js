@@ -1,3 +1,12 @@
+// Register Service Worker for PWA support
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+            .then(reg => console.log('[PWA] Service worker registered successfully', reg))
+            .catch(err => console.error('[PWA] Service worker registration failed', err));
+    });
+}
+
 // Navigation System
 function nav(screenId) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -150,10 +159,17 @@ window.addEventListener('DOMContentLoaded', () => {
     if (waitingScreen) {
         originalWaitingHtml = waitingScreen.innerHTML;
     }
+    
+    // Attempt to restore existing session
+    const savedToken = localStorage.getItem('kolosok_token');
+    if (savedToken) {
+        restoreSession(savedToken);
+    }
 });
 
 let realMatch = null;
 let pollIntervalId = null;
+let chatPollIntervalId = null;
 
 // Toast helper function
 function showToast(message, type = 'info') {
@@ -481,9 +497,17 @@ function openChatForMatch(matchId) {
     
     // Navigate to Chat Screen
     nav('screen-chat');
+
+    // Start/Stop chat polling
+    if (matchId === 'real_match') {
+        startChatPolling();
+    } else {
+        stopChatPolling();
+    }
 }
 
 function showMatchesList() {
+    stopChatPolling();
     nav('screen-waiting');
 }
 
@@ -511,15 +535,90 @@ function sendMessage() {
     
     if (!text || !activeMatchId) return; // Ignore empty messages
     
-    // Save message to chat history
-    if (!chats[activeMatchId]) {
-        chats[activeMatchId] = [];
+    if (activeMatchId === 'real_match') {
+        const token = localStorage.getItem('kolosok_token');
+        if (!token) return;
+        
+        const apiHost = window.location.hostname || 'localhost';
+        
+        fetch(`http://${apiHost}:8765/chat/send`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token: token, text: text })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("HTTP error: " + response.status);
+            return response.json();
+        })
+        .then(data => {
+            if (data.ok) {
+                const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}`;
+                syncChatMessages(pollUrl);
+            }
+        })
+        .catch(error => {
+            console.error("Error sending chat message:", error);
+            showToast("Failed to send message: " + error.message, "error");
+        });
+        
+        input.value = '';
+    } else {
+        // Save message to chat history
+        if (!chats[activeMatchId]) {
+            chats[activeMatchId] = [];
+        }
+        chats[activeMatchId].push({ sender: 'sent', text: text });
+        
+        // Render new messages and clear input
+        renderMessages();
+        input.value = '';
     }
-    chats[activeMatchId].push({ sender: 'sent', text: text });
+}
+
+function startChatPolling() {
+    if (chatPollIntervalId) {
+        clearInterval(chatPollIntervalId);
+    }
+    const token = localStorage.getItem('kolosok_token');
+    if (!token) return;
     
-    // Render new messages and clear input
-    renderMessages();
-    input.value = '';
+    const apiHost = window.location.hostname || 'localhost';
+    const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}`;
+    
+    // Immediate sync
+    syncChatMessages(pollUrl);
+    
+    chatPollIntervalId = setInterval(() => {
+        syncChatMessages(pollUrl);
+    }, 1000);
+}
+
+function syncChatMessages(pollUrl) {
+    fetch(pollUrl)
+    .then(response => {
+        if (!response.ok) throw new Error("HTTP status: " + response.status);
+        return response.json();
+    })
+    .then(data => {
+        if (data.ok && data.messages) {
+            chats["real_match"] = data.messages;
+            if (activeMatchId === 'real_match') {
+                renderMessages();
+            }
+        }
+    })
+    .catch(error => {
+        console.error("Error polling chat messages:", error);
+    });
+}
+
+function stopChatPolling() {
+    if (chatPollIntervalId) {
+        clearInterval(chatPollIntervalId);
+        chatPollIntervalId = null;
+    }
 }
 
 function resetApp() {
@@ -527,5 +626,68 @@ function resetApp() {
         clearInterval(pollIntervalId);
         pollIntervalId = null;
     }
+    stopChatPolling();
+    localStorage.removeItem('kolosok_token'); // Clear token on reset
     nav('screen-demographics');
+}
+
+function restoreSession(token) {
+    console.log("Found existing token, attempting to restore session...");
+    const apiHost = window.location.hostname || 'localhost';
+    const pollUrl = `http://${apiHost}:8765/result/${token}`;
+    
+    showToast("Restoring secure session...", "info");
+    
+    fetch(pollUrl)
+    .then(response => {
+        if (!response.ok) {
+            throw new Error("Invalid token on server");
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log("Session restore poll result:", data);
+        
+        // Restore local profile values from localStorage if available
+        try {
+            const profileJson = localStorage.getItem('kolosok_profile');
+            if (profileJson) {
+                const profileObj = JSON.parse(profileJson);
+                if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
+                if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
+                if (document.getElementById('my-age')) document.getElementById('my-age').value = profileObj.age || "";
+                if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
+            }
+            const avatarVal = localStorage.getItem('kolosok_avatar');
+            if (avatarVal !== null) {
+                selectedAvatarIndex = parseInt(avatarVal, 10);
+                setTimeout(() => {
+                    const avatarItems = document.querySelectorAll('.avatar-item');
+                    if (avatarItems[selectedAvatarIndex]) {
+                        avatarItems[selectedAvatarIndex].classList.add('selected');
+                    }
+                }, 100);
+            }
+        } catch (e) {
+            console.error("Error restoring profile fields:", e);
+        }
+        
+        if (data.round_done) {
+            if (data.matched) {
+                showRealMatch(data);
+                nav('screen-waiting');
+            } else {
+                showNoMatch();
+                nav('screen-waiting');
+            }
+        } else {
+            // Still waiting for round completion, resume polling
+            nav('screen-waiting');
+            startPolling(token);
+        }
+    })
+    .catch(error => {
+        console.warn("Session restoration failed:", error);
+        localStorage.removeItem('kolosok_token');
+    });
 }
