@@ -292,7 +292,8 @@ function startMatching() {
     console.log("Establishing secure connection to TEE and submitting profile...");
     console.log("Payload:", JSON.stringify(payload, null, 2));
     
-    fetch('http://10.217.111.34:8765/submit', {
+    const apiHost = window.location.hostname || 'localhost';
+    fetch(`http://${apiHost}:8765/submit`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -330,7 +331,8 @@ function startPolling(token) {
         clearInterval(pollIntervalId);
     }
     
-    const pollUrl = `http://10.217.111.34:8765/result/${token}`;
+    const apiHost = window.location.hostname || 'localhost';
+    const pollUrl = `http://${apiHost}:8765/result/${token}`;
     
     pollIntervalId = setInterval(() => {
         fetch(pollUrl)

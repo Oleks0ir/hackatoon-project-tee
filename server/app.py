@@ -26,8 +26,29 @@ from __future__ import annotations
 
 import os
 import secrets
+import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
+
+# Setup logging to both console and a file in the server directory
+logger = logging.getLogger("dating_server")
+logger.setLevel(logging.INFO)
+
+# Make sure we don't duplicate handlers if app is re-imported
+if not logger.handlers:
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    
+    # File Handler
+    log_file_path = os.path.join(os.path.dirname(__file__), "server.log")
+    file_handler = logging.FileHandler(log_file_path, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # Stream Handler
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
 
 from prefilter import candidate_pairs, embed
 
@@ -162,6 +183,8 @@ class MatchEngine:
             vector=vector,
         )
         self._results.setdefault(token, MatchResult(matched=False))
+        self._round_done = False
+        logger.info(f"[ENGINE] Profile submitted: handle='{handle}', gender={demo.get('my_gender')}, target={demo.get('target_gender')}, age={self._profiles[token].age}, token={token[:8]}...")
         return token
 
     # -- the one batch round --------------------------------------------
@@ -172,9 +195,21 @@ class MatchEngine:
             self._ai = DatingMatchingAI(threshold=self._ai_threshold, verbose=False)
         return self._ai
 
-    def run_match_round(self, top_k: int = PREFILTER_TOP_K) -> dict:
+    def run_match_round(self, top_k: int = PREFILTER_TOP_K, force: bool = False) -> dict:
         profiles = list(self._profiles.values())
         by_uid = {p.user_id: p for p in profiles}
+        logger.info(f"[ENGINE] Starting match round with {len(profiles)} active profiles.")
+
+        if len(profiles) < 2 and not force:
+            logger.info("[ENGINE] Fewer than 2 profiles and not forced. Postponing match round finalization.")
+            self._round_done = False
+            return {
+                "profiles": len(profiles),
+                "candidate_pairs": 0,
+                "ai_calls": 0,
+                "pairs": 0,
+                "unmatched": len(profiles),
+            }
 
         # 1. hard demographic gate + cheap prefilter -> shortlist of pairs.
         def eligible(uid_a: str, uid_b: str) -> bool:
@@ -183,16 +218,22 @@ class MatchEngine:
 
         vectors = [(p.user_id, p.vector) for p in profiles]
         shortlist = candidate_pairs(vectors, top_k=top_k, eligible=eligible)
+        logger.info(f"[ENGINE] Prefilter phase completed. {len(shortlist)} candidate pairs passed demographics/prefilter.")
 
         # 2. expensive AI matcher, only on the shortlist.
         ai = self._matcher()
         scored: list[tuple[float, str, str, str, list[str]]] = []
         for a_uid, b_uid, _cos in shortlist:
             a, b = by_uid[a_uid], by_uid[b_uid]
+            logger.info(f"[ENGINE] Running AI Matcher for: {a.handle} <-> {b.handle}")
             res = ai.should_match(self._as_user(a), self._as_user(b))
-            if res["match"]:
+            score = res.get("score", 0.0)
+            verdict = res.get("verdict", "No Match")
+            match_ok = res.get("match", False)
+            logger.info(f"[ENGINE] AI Result ({a.handle} <-> {b.handle}): Score={score}%, Match={match_ok}, Verdict='{verdict}'")
+            if match_ok:
                 scored.append(
-                    (res["score"], a_uid, b_uid, res["verdict"], res["reasons"])
+                    (score, a_uid, b_uid, verdict, res.get("reasons", []))
                 )
 
         # 3. greedy global assignment: best AI score first, one partner each.
@@ -203,6 +244,7 @@ class MatchEngine:
             self._results[token] = MatchResult(matched=False)
         for score, a_uid, b_uid, verdict, reasons in scored:
             if a_uid in used or b_uid in used:
+                logger.info(f"[ENGINE] Skipping pair {by_uid[a_uid].handle} <-> {by_uid[b_uid].handle} because one/both are already matched.")
                 continue
             used.update((a_uid, b_uid))
             a, b = by_uid[a_uid], by_uid[b_uid]
@@ -214,15 +256,18 @@ class MatchEngine:
                 True, a.handle, code, score, verdict, reasons
             )
             pairs += 1
+            logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
 
         self._round_done = True
-        return {
+        summary = {
             "profiles": len(profiles),
             "candidate_pairs": len(shortlist),
             "ai_calls": len(shortlist),
             "pairs": pairs,
             "unmatched": len(profiles) - 2 * pairs,
         }
+        logger.info(f"[ENGINE] Match round completed. Summary: {summary}")
+        return summary
 
     @staticmethod
     def _as_user(p: Profile) -> dict[str, Any]:
@@ -236,8 +281,11 @@ class MatchEngine:
     # -- reads -----------------------------------------------------------
     def result_for(self, token: str) -> MatchResult | None:
         if token not in self._profiles:
+            logger.warning(f"[ENGINE] Result poll rejected: unknown token='{token[:8]}...'")
             return None
-        return self._results.get(token, MatchResult(matched=False))
+        res = self._results.get(token, MatchResult(matched=False))
+        logger.info(f"[ENGINE] Result poll: handle='{self._profiles[token].handle}', matched={res.matched}, token='{token[:8]}...'")
+        return res
 
     def stats(self) -> dict:
         matched = sum(1 for r in self._results.values() if r.matched)
@@ -257,7 +305,7 @@ ENGINE = MatchEngine()
 # Guarded so the engine above stays importable without fastapi installed.
 # ----------------------------------------------------------------------
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 
@@ -299,10 +347,21 @@ try:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start_time = time.time()
+        logger.info(f"[HTTP] Received request: {request.method} {request.url.path} (client={request.client.host if request.client else 'unknown'})")
+        response = await call_next(request)
+        duration = time.time() - start_time
+        logger.info(f"[HTTP] Completed request: {request.method} {request.url.path} -> Status={response.status_code} (took {duration:.4f}s)")
+        return response
+
     @app.post("/submit")
     def submit(payload: SubmitPayload):
         try:
             token = ENGINE.submit(payload.model_dump())
+            logger.info("[HTTP] Running match round automatically after profile submission.")
+            ENGINE.run_match_round(force=False)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True, "token": token}
@@ -330,7 +389,7 @@ try:
     def match_round(admin_token: str = ""):
         if admin_token != ADMIN_TOKEN:
             raise HTTPException(403, "bad admin token")
-        return ENGINE.run_match_round()
+        return ENGINE.run_match_round(force=True)
 
     @app.get("/admin/debug")
     def debug(admin_token: str = ""):
