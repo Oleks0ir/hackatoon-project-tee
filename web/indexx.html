@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kolosok - Confidential Dating</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,400&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div id="tee-status-bar">
+        <span class="status-dot"></span>
+        Remote Attestation: Verified | TEE Enclave Active | Server: 203.0.113.42
+    </div>
+
+    <main id="app-container">
+        
+        <section id="screen-welcome" class="screen active">
+            <div class="content-wrapper center-content">
+                <img src="golden_kolosok.jpg" alt="Kolosok Logo" style="width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent-gold); box-shadow: 0 8px 24px rgba(229, 169, 59, 0.15); margin-bottom: 24px; padding: 12px; background: white;">
+                <h1>Kolosok</h1>
+                <p class="subtitle" style="font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 30px;">Confidential AI Matchmaking</p>
+                
+                <div style="display: flex; flex-direction: column; gap: 16px; text-align: left; width: 100%; max-width: 320px; font-size: 0.95rem; margin-bottom: 20px;">
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="font-size: 1.4rem; line-height: 1;">🔒</span>
+                        <span style="color: var(--text-main);"><strong>TEE hardware enclaves</strong> keep your details 100% hidden.</span>
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="font-size: 1.4rem; line-height: 1;">🧠</span>
+                        <span style="color: var(--text-main);"><strong>Confidential AI</strong> matches your true life story, not photos.</span>
+                    </div>
+                    <div style="display: flex; gap: 12px; align-items: flex-start;">
+                        <span style="font-size: 1.4rem; line-height: 1;">🚫</span>
+                        <span style="color: var(--text-main);"><strong>No public directory</strong> or swiping. Only secure, verified matches.</span>
+                    </div>
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-info-1')">Get Started</button>
+            </div>
+        </section>
+
+        <section id="screen-info-1" class="screen">
+            <div class="content-wrapper">
+                <h2>The Privacy Shield: TEEs</h2>
+                <p class="subtitle">Your life story, locked in silicon.</p>
+                <div class="graphic-placeholder">🔒</div>
+                
+                <p>Traditional dating apps force you to put your personal life, photos, and desires on display for everyone to scroll through. This public exposure leads to filtering yourself, fear of judgment, and potential leaks.</p>
+                
+                <div style="background: #f1f5f9; padding: 16px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid var(--primary); text-align: left;">
+                    <h4 style="margin-bottom: 6px; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">🏦 The Virtual Vault</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.4;">Your profile is instantly encrypted and sent directly into a <strong>Trusted Execution Environment (TEE)</strong>—a secure hardware enclave inside the cloud server's CPU.</p>
+                </div>
+
+                <div style="background: #f1f5f9; padding: 16px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid var(--primary); text-align: left;">
+                    <h4 style="margin-bottom: 6px; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">🤝 Remote Attestation</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.4;">Before data enters, your phone runs a mathematical check verifying that the vault is running <em>only</em> our verified, unmanipulated matchmaking code. Neither cloud providers, hackers, nor our own developers can read what's inside.</p>
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-info-2')">Next</button>
+            </div>
+        </section>
+
+        <section id="screen-info-2" class="screen">
+            <div class="content-wrapper">
+                <h2>Confidential Matchmaking</h2>
+                <p class="subtitle">Zero-knowledge AI matchmaking.</p>
+                <div class="graphic-placeholder">🧠</div>
+
+                <p>Once your profile details are secure in the hardware enclave, our <strong>Confidential AI</strong> (running on specialized Confidential GPUs) processes your story and matches you with complete privacy.</p>
+
+                <div style="background: #f1f5f9; padding: 16px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid var(--primary); text-align: left;">
+                    <h4 style="margin-bottom: 6px; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">👁️ Zero-Knowledge Matches</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.4;">There is no endless swiping or public search directory. The AI matches you based on your raw story inside the TEE and notifies you only when a high-accuracy, verified match is found.</p>
+                </div>
+
+                <div style="background: #f1f5f9; padding: 16px; border-radius: 12px; margin-bottom: 16px; border-left: 4px solid var(--primary); text-align: left;">
+                    <h4 style="margin-bottom: 6px; font-size: 0.95rem; font-weight: 700; color: var(--text-main);">🛡️ Anti-Phishing (Oracle Protection)</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; line-height: 1.4;">We prevent "Oracle" phishing attacks (scammers crafting fake specific profiles to fish out your attributes) using smart rate-limiting and fuzzed compatibility thresholds inside the enclave.</p>
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-name')">Understood</button>
+            </div>
+        </section>
+
+        <section id="screen-name" class="screen">
+            <div class="content-wrapper">
+                <h2>Who are you?</h2>
+                <p class="subtitle">What should we call you?</p>
+                <div class="input-group">
+                    <label for="fname">First Name</label>
+                    <input type="text" id="fname" placeholder="Your first name">
+                </div>
+                <div class="input-group">
+                    <label for="lname">Last Name</label>
+                    <input type="text" id="lname" placeholder="Your last name">
+                </div>
+                <div class="input-group">
+                    <label for="my-age">Your Age</label>
+                    <input type="number" id="my-age" min="18" max="99" placeholder="Enter your age">
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-avatar')">Next</button>
+            </div>
+        </section>
+
+        <section id="screen-avatar" class="screen">
+            <div class="content-wrapper">
+                <h2>Your Avatar</h2>
+                <p class="subtitle">Choose an identity for your profile.</p>
+                <div class="avatar-grid" id="avatar-grid">
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-demographics')">Next</button>
+            </div>
+        </section>
+
+        <section id="screen-demographics" class="screen">
+            <div class="content-wrapper">
+                <h2>Who are you looking for?</h2>
+                <p class="subtitle">Set your preferences.</p>
+                
+                <div class="input-group">
+                    <label>Your Gender</label>
+                    <div class="gender-chips" id="my-gender-group">
+                        <button class="lang-chip active" onclick="selectGender('my-gender-group', this)">Male</button>
+                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)">Female</button>
+                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)">Other</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Looking for</label>
+                    <div class="gender-chips" id="target-gender-group">
+                        <button class="lang-chip active" onclick="selectGender('target-gender-group', this)">Female</button>
+                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)">Male</button>
+                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)">All</button>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Age Range: <span id="age-val">18 - 35</span></label>
+                    <div class="range-slider">
+                        <div class="slider-track"></div>
+                        <input type="range" id="age-min" min="18" max="99" value="18" oninput="slideMin()">
+                        <input type="range" id="age-max" min="18" max="99" value="35" oninput="slideMax()">
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label>Languages</label>
+                    <button class="btn-secondary" onclick="document.getElementById('lang-modal').showModal()">Select Languages</button>
+                    <p id="selected-langs-text" style="font-size: 0.85rem; color: #666; margin-top: 8px;"></p>
+                </div>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="nav('screen-story')">Next</button>
+            </div>
+        </section>
+
+        <section id="screen-story" class="screen">
+            <div class="content-wrapper">
+                <h2>Your Story</h2>
+                <p class="subtitle">Tell us everything about yourself. The Confidential AI does the rest.</p>
+                <p class="info-text">Write your entire life story here, your deepest desires, or simply what makes you unique. This data never leaves the TEE in readable form.</p>
+                <textarea id="story-text" placeholder="I grew up in a small town and love solving problems..."></textarea>
+            </div>
+            <div class="button-container">
+                <button class="btn-primary" onclick="startMatching()">Submit Profile Securely</button>
+            </div>
+        </section>
+
+        <section id="screen-waiting" class="screen">
+            <div class="content-wrapper center-content">
+                <div class="loader"></div>
+                <h2>Analyzing Profile...</h2>
+                <p class="subtitle">Waiting for secure matches from the TEE.</p>
+            </div>
+        </section>
+
+        <section id="screen-chat" class="screen" style="padding: 0;">
+            <div class="chat-header">
+                <button onclick="nav('screen-waiting')" class="btn-icon">← Back</button>
+                <div class="chat-title">
+                    <span id="chat-avatar">🦊</span>
+                    <span id="chat-name">Max</span>
+                </div>
+                <button onclick="nav('screen-demographics')" class="btn-icon">⚙️ Preferences</button>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+                <div class="message received">Hello! The Confidential AI says we are a 98% match. Crazy, right?</div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Write a secure message..." onkeypress="if(event.key === 'Enter') sendMessage()">
+                <button class="btn-primary" style="width: auto; padding: 12px 20px;" onclick="sendMessage()">Send</button>
+            </div>
+        </section>
+    </main>
+
+    <dialog id="lang-modal">
+        <div class="modal-header">
+            <h3>Select Languages</h3>
+            <button onclick="document.getElementById('lang-modal').close()">✕</button>
+        </div>
+        <div class="modal-content">
+            <h4>Europe</h4>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">German</button>
+                <button class="lang-chip" onclick="toggleLang(this)">English</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Spanish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">French</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Italian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Portuguese</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Dutch</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Polish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Russian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Ukrainian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Swedish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Norwegian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Danish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Finnish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Greek</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Czech</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Romanian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hungarian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Catalan</button>
+            </div>
+            <h4>Asia</h4>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Mandarin</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Cantonese</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Japanese</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Korean</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hindi</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Urdu</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Bengali</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Punjabi</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Tamil</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Telugu</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Vietnamese</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Thai</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Indonesian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Malay</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Tagalog</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Turkish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hebrew</button>
+            </div>
+            <h4>Africa & Middle East</h4>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Arabic</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Persian (Farsi)</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Swahili</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hausa</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Yoruba</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Igbo</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Zulu</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Afrikaans</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Amharic</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Somali</button>
+            </div>
+            <h4>Americas & Oceania</h4>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Quechua</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Guarani</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Maori</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hawaiian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Navajo</button>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-primary" style="width: 100%" onclick="document.getElementById('lang-modal').close()">Done</button>
+        </div>
+    </dialog>
+
+    <script src="app.js"></script>
+</body>
+</html>
