@@ -9,7 +9,7 @@ Flow
 1. /submit            web client posts a raw profile {id, text, wants,
                       dealbreakers}. We KEEP the raw text (the AI matcher needs
                       it) and also compute a cheap cosine vector for prefiltering.
-2. /admin/match-round prefilter candidate pairs by cheap cosine (matching.py),
+2. /admin/match-round prefilter candidate pairs by cheap cosine (prefilter.py),
                       run the expensive AI matcher only on that shortlist
                       (dating_matching_ai.py), then greedily assign each person
                       at most one partner by AI score.
@@ -27,7 +27,7 @@ import secrets
 from dataclasses import dataclass, field
 from typing import Any
 
-from matching import candidate_pairs, embed
+from prefilter import candidate_pairs, embed
 
 ADMIN_TOKEN = os.environ.get("MATCH_ADMIN_TOKEN", "let-me-match")
 # AI compatibility score (0..100) at/above which a candidate pair may be matched.
