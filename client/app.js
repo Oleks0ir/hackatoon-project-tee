@@ -728,8 +728,12 @@ function restoreSession(token) {
     
     fetch(pollUrl)
     .then(response => {
-        if (!response.ok) {
+        if (response.status === 404 || response.status === 403) {
+            localStorage.removeItem('kolosok_token');
             throw new Error("Invalid token on server");
+        }
+        if (!response.ok) {
+            throw new Error("Server error, status: " + response.status);
         }
         return response.json();
     })
@@ -776,7 +780,39 @@ function restoreSession(token) {
     })
     .catch(error => {
         console.warn("Session restoration failed:", error);
-        localStorage.removeItem('kolosok_token');
+        
+        // Populate local fields anyway from local storage if available
+        try {
+            const profileJson = localStorage.getItem('kolosok_profile');
+            if (profileJson) {
+                const profileObj = JSON.parse(profileJson);
+                if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
+                if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
+                if (document.getElementById('my-age')) document.getElementById('my-age').value = profileObj.age || "";
+                if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
+            }
+            const avatarVal = localStorage.getItem('kolosok_avatar');
+            if (avatarVal !== null) {
+                selectedAvatarIndex = parseInt(avatarVal, 10);
+                setTimeout(() => {
+                    const avatarItems = document.querySelectorAll('.avatar-item');
+                    if (avatarItems[selectedAvatarIndex]) {
+                        avatarItems[selectedAvatarIndex].classList.add('selected');
+                    }
+                }, 100);
+            }
+        } catch (e) {
+            console.error("Error restoring profile fields:", e);
+        }
+        
+        if (error.message !== "Invalid token on server") {
+            showToast("Server offline. Displaying local profile data.", "warning");
+        } else {
+            showToast("Session expired. Please re-enter your details.", "info");
+        }
+        
+        // Guide them back to name screen to review their details
+        nav('screen-name');
     });
 }
 
