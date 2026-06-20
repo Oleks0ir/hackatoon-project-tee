@@ -1,15 +1,17 @@
-"""Matching: turn a rich free-text profile into a vector and pair people by
-cosine similarity. Runs entirely inside the enclave on decrypted plaintext;
-no profile text ever leaves this process.
+"""Cheap prefilter for the matching pipeline.
+
+Running the heavy AI matcher (dating_matching_ai.DatingMatchingAI) on every
+possible pair is O(N^2) cross-encoder calls -- too slow. So this module turns
+each free-text profile into a fast vector and uses cheap cosine similarity to
+pick a *shortlist* of plausible candidate pairs. The expensive AI matcher then
+only runs on that shortlist. See `candidate_pairs()`.
 
 Embedding
 ---------
-For the hackathon we ship a dependency-light deterministic embedder (hashed
-bag-of-words -> L2-normalised vector). It is good enough to demonstrate that
-"more detail -> better signal", runs instantly on CPU, and needs no model
-download. PRODUCTION: swap `embed()` for a sentence-transformers model bundled
-inside the enclave image (e.g. all-MiniLM-L6-v2). The rest of the pipeline is
-unchanged. See HANDOFF.md.
+We ship a dependency-light deterministic embedder (hashed bag-of-words -> L2-
+normalised vector). It runs instantly on CPU and needs no model download. It is
+intentionally only a *coarse* filter; the real compatibility decision is made
+later by the AI matcher on the raw text.
 """
 from __future__ import annotations
 
@@ -59,40 +61,50 @@ def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b))  # vectors are already L2-normalised
 
 
-def match_round(
+def candidate_pairs(
     profiles: list[tuple[str, np.ndarray]],
-    threshold: float = 0.15,
-) -> tuple[list[tuple[str, str, float]], list[str]]:
-    """Greedy global pairing by descending similarity.
+    top_k: int = 5,
+    floor: float = 0.0,
+) -> list[tuple[str, str, float]]:
+    """Cheap shortlist of pairs worth running the expensive AI matcher on.
+
+    For each person we keep their `top_k` most cosine-similar others (above
+    `floor`), then union those into a deduplicated set of unordered pairs. This
+    bounds the number of expensive AI calls to roughly N*top_k/2 instead of the
+    full N*(N-1)/2.
+
+    The cosine scan itself is still O(N^2), but each cosine is a single cheap
+    numpy dot product -- the cost we are trying to avoid is the AI cross-encoder
+    downstream, not this. (For very large N, swap this scan for an approximate
+    nearest-neighbour index; the pipeline is otherwise unchanged.)
 
     Args:
-        profiles: list of (user_id, vector).
-        threshold: minimum cosine for a pair to be offered. Below it we leave
-            people unmatched on purpose -- "no great match" is a feature, not a
-            bug (the anti-scroll thesis).
+        profiles: list of (user_id, vector). Vectors are L2-normalised.
+        top_k: how many nearest neighbours to keep per person.
+        floor: minimum cosine for a neighbour to be considered at all.
 
     Returns:
-        (pairs, unmatched_ids) where pairs = [(a, b, score), ...].
+        [(uid_a, uid_b, cosine), ...] unique unordered pairs, best cosine first.
+        `cosine` is only a coarse prefilter score, not the final verdict.
     """
-    candidates = []
-    for i in range(len(profiles)):
-        for j in range(i + 1, len(profiles)):
-            uid_a, va = profiles[i]
-            uid_b, vb = profiles[j]
-            score = cosine(va, vb)
-            if score >= threshold:
-                candidates.append((score, uid_a, uid_b))
-    candidates.sort(reverse=True)
+    best: dict[tuple[str, str], float] = {}
+    n = len(profiles)
+    for i in range(n):
+        uid_i, vi = profiles[i]
+        neighbours: list[tuple[float, str]] = []
+        for j in range(n):
+            if i == j:
+                continue
+            uid_j, vj = profiles[j]
+            score = cosine(vi, vj)
+            if score >= floor:
+                neighbours.append((score, uid_j))
+        neighbours.sort(reverse=True)
+        for score, uid_j in neighbours[:top_k]:
+            key = tuple(sorted((uid_i, uid_j)))  # type: ignore[assignment]
+            if score > best.get(key, -1.0):
+                best[key] = score
 
-    used: set[str] = set()
-    pairs: list[tuple[str, str, float]] = []
-    for score, a, b in candidates:
-        if a in used or b in used:
-            continue
-        used.add(a)
-        used.add(b)
-        pairs.append((a, b, round(score, 4)))
-
-    all_ids = {uid for uid, _ in profiles}
-    unmatched = sorted(all_ids - used)
-    return pairs, unmatched
+    pairs = [(a, b, round(s, 4)) for (a, b), s in best.items()]
+    pairs.sort(key=lambda t: t[2], reverse=True)
+    return pairs
