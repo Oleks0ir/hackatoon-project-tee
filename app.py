@@ -6,13 +6,15 @@ TEE crypto/attestation stripped out so the pipeline runs locally with no keys.
 
 Flow
 ----
-1. /submit            web client posts a raw profile {id, text, wants,
-                      dealbreakers}. We KEEP the raw text (the AI matcher needs
-                      it) and also compute a cheap cosine vector for prefiltering.
-2. /admin/match-round prefilter candidate pairs by cheap cosine (prefilter.py),
-                      run the expensive AI matcher only on that shortlist
-                      (dating_matching_ai.py), then greedily assign each person
-                      at most one partner by AI score.
+1. /submit            web client posts the user profile (see SubmitPayload:
+                      profile / demographics / matching_data). We KEEP the raw
+                      story text (the AI matcher needs it) plus demographics, and
+                      compute a cheap cosine vector for prefiltering.
+2. /admin/match-round hard-gate impossible pairs by demographics (mutual gender
+                      preference + mutual age fit), prefilter the rest by cheap
+                      cosine (prefilter.py), run the expensive AI matcher only on
+                      that shortlist (dating_matching_ai.py), then greedily assign
+                      each person at most one partner by AI score.
 3. /result/{token}    each client polls its own match.
 4. /stats             content-free aggregate counts.
 
@@ -25,7 +27,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from prefilter import candidate_pairs, embed
 
@@ -40,13 +42,55 @@ PREFILTER_TOP_K = int(os.environ.get("MATCH_PREFILTER_TOP_K", "5"))
 class Profile:
     user_id: str
     token: str            # secret handle the client polls with
-    handle: str           # what to reveal on a match (e.g. "code #7")
-    # Raw text is KEPT (unlike the original enclave build) because the AI
+    handle: str           # what to reveal on a match (e.g. "Serafim 🦊")
+    last_name: str        # kept private; reveal only after a match if desired
+    # Raw story text is KEPT (unlike the original enclave build) because the AI
     # matcher reads text, not vectors.
     text: str
     wants: str
     dealbreakers: list[str]
+    # Demographics: hard gates applied before any matching.
+    my_gender: str
+    target_gender: str
+    age: int | None
+    age_min: int | None
+    age_max: int | None
+    languages: list[str]  # parsed but not yet used for filtering
     vector: Any           # numpy array, cheap prefilter signal only
+
+
+# -- demographic hard gates ---------------------------------------------
+_OPEN_GENDERS = {"", "any", "everyone", "all", "both", "other", "anyone"}
+
+
+def _wants_gender(target: str, other_gender: str) -> bool:
+    """Does someone whose preference is `target` accept `other_gender`?"""
+    target = target.strip().lower()
+    if target in _OPEN_GENDERS:
+        return True
+    return target == other_gender.strip().lower()
+
+
+def _gender_ok(a: Profile, b: Profile) -> bool:
+    """Mutual gender preference: each must want the other's gender."""
+    return (
+        _wants_gender(a.target_gender, b.my_gender)
+        and _wants_gender(b.target_gender, a.my_gender)
+    )
+
+
+def _age_ok(a: Profile, b: Profile) -> bool:
+    """Mutual age fit: each person's own age within the other's range.
+
+    If an age or range is missing we don't block (graceful until the users API
+    ships the `age` field everywhere).
+    """
+    def fits(age: int | None, lo: int | None, hi: int | None) -> bool:
+        if age is None or lo is None or hi is None:
+            return True
+        return lo <= age <= hi
+
+    return fits(a.age, b.age_min, b.age_max) and fits(b.age, a.age_min, a.age_max)
 
 
 @dataclass
@@ -70,24 +114,49 @@ class MatchEngine:
         self._ai = None  # lazily loaded; the model is expensive to construct
 
     # -- submission ------------------------------------------------------
-    def submit(self, profile: dict[str, Any]) -> str:
-        text = str(profile.get("text", "")).strip()
-        wants = str(profile.get("wants", "")).strip()
-        if not text and not wants:
-            raise ValueError("empty profile")
+    def submit(self, payload: dict[str, Any]) -> str:
+        """Accept the users-API profile shape:
+
+            {
+              "profile":      {first_name, last_name, avatar_index, avatar_emoji},
+              "demographics": {my_gender, target_gender, age, age_range:{min,max},
+                               languages: [...]},
+              "matching_data":{story}
+            }
+        """
+        profile = payload.get("profile") or {}
+        demo = payload.get("demographics") or {}
+        matching = payload.get("matching_data") or {}
+        age_range = demo.get("age_range") or {}
+
+        # The story is the bio the AI reads; it usually already contains the
+        # "looking for..." part, so we keep `wants` empty.
+        text = str(matching.get("story", "")).strip()
+        if not text:
+            raise ValueError("empty profile (matching_data.story is required)")
+
+        first = str(profile.get("first_name", "")).strip()
+        emoji = str(profile.get("avatar_emoji", "")).strip()
+        handle = " ".join(p for p in (first, emoji) if p) or "someone in the room"
+
         token = secrets.token_urlsafe(16)
         user_id = secrets.token_hex(8)
-        handle = str(profile.get("handle") or profile.get("id") or "someone in the room")
-        dealbreakers = [str(d) for d in profile.get("dealbreakers", [])]
         # Cheap prefilter vector from the same text the AI will later read.
-        vector = embed(f"{text}\n{wants}")
+        vector = embed(text)
         self._profiles[token] = Profile(
             user_id=user_id,
             token=token,
             handle=handle,
+            last_name=str(profile.get("last_name", "")).strip(),
             text=text,
-            wants=wants,
-            dealbreakers=dealbreakers,
+            wants="",
+            dealbreakers=[],
+            my_gender=str(demo.get("my_gender", "")),
+            target_gender=str(demo.get("target_gender", "")),
+            age=demo.get("age"),
+            age_min=age_range.get("min"),
+            age_max=age_range.get("max"),
+            languages=[str(l) for l in demo.get("languages", [])],
             vector=vector,
         )
         self._results.setdefault(token, MatchResult(matched=False))
@@ -105,9 +174,13 @@ class MatchEngine:
         profiles = list(self._profiles.values())
         by_uid = {p.user_id: p for p in profiles}
 
-        # 1. cheap prefilter -> shortlist of candidate pairs.
+        # 1. hard demographic gate + cheap prefilter -> shortlist of pairs.
+        def eligible(uid_a: str, uid_b: str) -> bool:
+            a, b = by_uid[uid_a], by_uid[uid_b]
+            return _gender_ok(a, b) and _age_ok(a, b)
+
         vectors = [(p.user_id, p.vector) for p in profiles]
-        shortlist = candidate_pairs(vectors, top_k=top_k)
+        shortlist = candidate_pairs(vectors, top_k=top_k, eligible=eligible)
 
         # 2. expensive AI matcher, only on the shortlist.
         ai = self._matcher()
@@ -186,12 +259,30 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 
+    class ProfileBlock(BaseModel):
+        first_name: str = ""
+        last_name: str = ""
+        avatar_index: Optional[int] = None
+        avatar_emoji: str = ""
+
+    class AgeRange(BaseModel):
+        min: Optional[int] = None
+        max: Optional[int] = None
+
+    class Demographics(BaseModel):
+        my_gender: str = ""
+        target_gender: str = ""
+        age: Optional[int] = None
+        age_range: AgeRange = AgeRange()
+        languages: list[str] = []
+
+    class MatchingData(BaseModel):
+        story: str = ""
+
     class SubmitPayload(BaseModel):
-        id: str = ""
-        handle: str = ""
-        text: str = ""
-        wants: str = ""
-        dealbreakers: list[str] = []
+        profile: ProfileBlock = ProfileBlock()
+        demographics: Demographics = Demographics()
+        matching_data: MatchingData = MatchingData()
 
     app = FastAPI(title="Matching server (prototype_no_keys)")
 

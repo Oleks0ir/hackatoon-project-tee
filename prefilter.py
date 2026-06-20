@@ -15,9 +15,8 @@ later by the AI matcher on the raw text.
 """
 from __future__ import annotations
 
-import math
 import re
-from typing import Iterable
+from typing import Callable, Optional
 
 import numpy as np
 
@@ -65,6 +64,7 @@ def candidate_pairs(
     profiles: list[tuple[str, np.ndarray]],
     top_k: int = 5,
     floor: float = 0.0,
+    eligible: Optional[Callable[[str, str], bool]] = None,
 ) -> list[tuple[str, str, float]]:
     """Cheap shortlist of pairs worth running the expensive AI matcher on.
 
@@ -82,6 +82,10 @@ def candidate_pairs(
         profiles: list of (user_id, vector). Vectors are L2-normalised.
         top_k: how many nearest neighbours to keep per person.
         floor: minimum cosine for a neighbour to be considered at all.
+        eligible: optional hard gate `eligible(uid_a, uid_b) -> bool`. When
+            given, ineligible neighbours are skipped *before* the top_k cut, so
+            an incompatible person (wrong gender/age) never crowds a real
+            candidate out of someone's shortlist. Assumed symmetric.
 
     Returns:
         [(uid_a, uid_b, cosine), ...] unique unordered pairs, best cosine first.
@@ -96,6 +100,8 @@ def candidate_pairs(
             if i == j:
                 continue
             uid_j, vj = profiles[j]
+            if eligible is not None and not eligible(uid_i, uid_j):
+                continue
             score = cosine(vi, vj)
             if score >= floor:
                 neighbours.append((score, uid_j))

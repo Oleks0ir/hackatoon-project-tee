@@ -1,69 +1,64 @@
 """Stand-in for the web frontend.
 
-The real web client (a separate, not-yet-written program) will POST profiles to
-app.py's HTTP endpoints. This script plays that role so we can exercise the whole
-pipeline end to end -- submit profiles -> run the match round -> poll results --
-without a browser or a running server.
+The real web client (a separate service) POSTs profiles to app.py's HTTP
+endpoints. This script plays that role so we can exercise the whole pipeline end
+to end -- submit profiles -> run the match round -> poll results -- without a
+browser or a running server. It drives `MatchEngine` directly, which is exactly
+what the FastAPI routes in app.py do.
 
-It drives `MatchEngine` directly, which is exactly what the FastAPI routes in
-app.py do. Run:
+Profiles use the real users-API shape (profile / demographics / matching_data).
 
+Run:
     python simulate_web.py
 """
 from __future__ import annotations
 
 from app import ENGINE
 
-# A small room of people. Some should pair up, some should be left unmatched --
-# "no good match" is an allowed outcome.
+
+def profile(first, emoji, my_gender, target, age, lo, hi, langs, story):
+    return {
+        "profile": {"first_name": first, "last_name": "Doe",
+                    "avatar_index": 1, "avatar_emoji": emoji},
+        "demographics": {"my_gender": my_gender, "target_gender": target,
+                         "age": age, "age_range": {"min": lo, "max": hi},
+                         "languages": langs},
+        "matching_data": {"story": story},
+    }
+
+
+# A small room. Note the demographic gates: Serafim<->Lena should pair (mutual
+# gender + age fit + compatible stories); Max<->Nina pair on party lifestyle;
+# Tom only wants men so he can't match the women regardless of his story.
 PROFILES = [
-    {
-        "id": "alice",
-        "text": "I love hiking, mountain trips, jazz, galleries and long calm "
-                "evenings cooking and talking for hours about life and ideas.",
-        "wants": "Someone calm, romantic and curious, into culture, travel and "
-                 "deep conversations. Looking for something serious.",
-        "dealbreakers": ["smoking"],
-    },
-    {
-        "id": "bob",
-        "text": "Walking in nature, live music, small cafes, museums and reading. "
-                "I like quiet weekends and deep talks.",
-        "wants": "Looking for something serious and warm, someone into culture "
-                 "and travel.",
-        "dealbreakers": [],
-    },
-    {
-        "id": "max",
-        "text": "Nightclubs, parties, drinking, loud festivals, gaming and cars. "
-                "Spontaneous nightlife, not into museums or quiet evenings.",
-        "wants": "Someone who wants to party every weekend and keep things casual.",
-        "dealbreakers": [],
-    },
-    {
-        "id": "nina",
-        "text": "Clubbing, festivals, parties and travel for the nightlife. "
-                "I love meeting lots of new people and going out constantly.",
-        "wants": "Casual fun, no commitment, lots of partying.",
-        "dealbreakers": [],
-    },
-    {
-        "id": "sam",
-        "text": "Startup founder, very career focused, ambitious, always building "
-                "something. Gym in the mornings, work the rest of the day.",
-        "wants": "Someone ambitious and independent with their own goals.",
-        "dealbreakers": [],
-    },
+    profile("Serafim", "🦊", "Male", "Female", 24, 21, 35, ["English", "German"],
+            "I study computer science at TUM. Into cybersecurity, cryptography "
+            "and hiking in the Alps. Looking for someone who loves technology, "
+            "outdoor adventures and deep talks over coffee."),
+    profile("Lena", "🦋", "Female", "Male", 26, 22, 32, ["English", "German"],
+            "Software engineer who loves mountain hikes, climbing and quiet "
+            "evenings reading about cryptography. Looking for someone curious "
+            "and into the outdoors and long conversations."),
+    profile("Max", "🐺",  "Male", "Female", 28, 21, 35, ["English"],
+            "Nightclubs, festivals, parties and gaming. Spontaneous nightlife, "
+            "not into museums. Looking for casual fun, no commitment."),
+    profile("Nina", "🦅", "Female", "Male", 25, 23, 33, ["English"],
+            "Clubbing, festivals and going out constantly. Love meeting new "
+            "people. Looking for casual fun and lots of partying."),
+    profile("Tom", "🐯",  "Male", "Male", 30, 25, 40, ["English"],
+            "Hiking, cryptography and coffee. Looking for a thoughtful guy who "
+            "loves the outdoors and deep discussions."),
 ]
 
 
 def main() -> None:
     # 1. web client submits each profile -> server hands back a poll token.
     tokens: dict[str, str] = {}
-    for profile in PROFILES:
-        token = ENGINE.submit(profile)
-        tokens[profile["id"]] = token
-        print(f"submitted {profile['id']:<6} -> token {token[:10]}...")
+    for p in PROFILES:
+        token = ENGINE.submit(p)
+        name = p["profile"]["first_name"]
+        tokens[name] = token
+        print(f"submitted {name:<8} -> token {token[:10]}...")
 
     # 2. presenter triggers the one synchronized round.
     print("\nrunning match round...")
@@ -72,15 +67,15 @@ def main() -> None:
 
     # 3. each client polls its own result.
     print("\nresults:")
-    for uid, token in tokens.items():
+    for name, token in tokens.items():
         res = ENGINE.result_for(token)
         if res and res.matched:
-            print(f"  {uid:<6} -> matched with {res.peer_handle} "
+            print(f"  {name:<8} -> matched with {res.peer_handle} "
                   f"(score {res.score}, {res.verdict}) {res.connection_code}")
             for reason in res.reasons:
-                print(f"           - {reason}")
+                print(f"             - {reason}")
         else:
-            print(f"  {uid:<6} -> no match this round")
+            print(f"  {name:<8} -> no match this round")
 
 
 if __name__ == "__main__":

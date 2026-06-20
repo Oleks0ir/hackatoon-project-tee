@@ -67,12 +67,18 @@ def make_profile(i: int, rng: random.Random) -> dict:
     a = ARCHETYPES[kind]
     text = ", ".join(rng.sample(a["text"], k=rng.randint(4, 7)))
     wants = " ".join(rng.sample(a["wants"], k=rng.randint(1, 2)))
-    deal = rng.choice(a["deal"])
+    # Demographics: simple mixed population to exercise the hard gates.
+    # Half male / half female, all seeking the opposite gender, ages 20-40.
+    my_gender = "Male" if i % 2 == 0 else "Female"
+    target = "Female" if my_gender == "Male" else "Male"
+    age = rng.randint(20, 40)
     return {
-        "id": f"user{i:03d}_{kind}",
-        "text": f"I'm into {text}.",
-        "wants": wants,
-        "dealbreakers": list(deal),
+        "profile": {"first_name": f"user{i:03d}", "last_name": kind,
+                    "avatar_index": 1, "avatar_emoji": "🙂"},
+        "demographics": {"my_gender": my_gender, "target_gender": target,
+                         "age": age, "age_range": {"min": 18, "max": 45},
+                         "languages": ["English"]},
+        "matching_data": {"story": f"I'm into {text}. {wants}."},
     }
 
 
@@ -85,7 +91,7 @@ def main() -> None:
     tokens = {}
     for i in range(n):
         p = make_profile(i, rng)
-        tokens[p["id"]] = engine.submit(p)
+        tokens[p["profile"]["first_name"]] = engine.submit(p)
 
     full_pairs = n * (n - 1) // 2
     print(f"people: {n}   top_k: {top_k}")
