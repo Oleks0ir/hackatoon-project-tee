@@ -1,0 +1,9 @@
+# Matching server (prototype_no_keys)
+numpy
+fastapi
+uvicorn[standard]
+
+# Optional: real AI matcher model. Without these, dating_matching_ai falls
+# back to a lightweight word-overlap scorer (pipeline still works).
+# sentence-transformers
+# torch
