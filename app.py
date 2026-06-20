@@ -183,6 +183,7 @@ ENGINE = MatchEngine()
 # ----------------------------------------------------------------------
 try:
     from fastapi import FastAPI, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
     from pydantic import BaseModel
 
     class SubmitPayload(BaseModel):
@@ -193,6 +194,16 @@ try:
         dealbreakers: list[str] = []
 
     app = FastAPI(title="Matching server (prototype_no_keys)")
+
+    # The users API is a separate web origin, so the browser needs CORS.
+    # Prototype: allow everything. Lock this down to the real frontend
+    # origin(s) before any non-demo deployment.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=os.environ.get("MATCH_CORS_ORIGINS", "*").split(","),
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.post("/submit")
     def submit(payload: SubmitPayload):
