@@ -153,7 +153,9 @@ class MatchEngine:
             dealbreakers=[],
             my_gender=str(demo.get("my_gender", "")),
             target_gender=str(demo.get("target_gender", "")),
-            age=demo.get("age"),
+            # Age may arrive under demographics.age (original contract) or
+            # profile.age (what the real users API actually sends).
+            age=demo.get("age") if demo.get("age") is not None else profile.get("age"),
             age_min=age_range.get("min"),
             age_max=age_range.get("max"),
             languages=[str(l) for l in demo.get("languages", [])],
@@ -262,6 +264,7 @@ try:
     class ProfileBlock(BaseModel):
         first_name: str = ""
         last_name: str = ""
+        age: Optional[int] = None
         avatar_index: Optional[int] = None
         avatar_emoji: str = ""
 
@@ -328,6 +331,22 @@ try:
         if admin_token != ADMIN_TOKEN:
             raise HTTPException(403, "bad admin token")
         return ENGINE.run_match_round()
+
+    @app.get("/admin/debug")
+    def debug(admin_token: str = ""):
+        if admin_token != ADMIN_TOKEN:
+            raise HTTPException(403, "bad admin token")
+        return [
+            {
+                "handle": p.handle,
+                "my_gender": p.my_gender,
+                "target_gender": p.target_gender,
+                "age": p.age,
+                "age_min": p.age_min,
+                "age_max": p.age_max,
+            }
+            for p in ENGINE._profiles.values()
+        ]
 
 except ImportError:  # fastapi not installed -> engine-only mode
     app = None
