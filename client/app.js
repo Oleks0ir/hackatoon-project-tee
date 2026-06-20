@@ -13,6 +13,54 @@ function nav(screenId) {
     document.getElementById(screenId).classList.add('active');
 }
 
+function validateAndNavName() {
+    const fname = document.getElementById('fname').value.trim();
+    const lname = document.getElementById('lname').value.trim();
+    const ageVal = document.getElementById('my-age').value;
+    const age = parseInt(ageVal, 10);
+
+    if (!fname) {
+        showToast("First Name is required.", "error");
+        return;
+    }
+    if (!lname) {
+        showToast("Last Name is required.", "error");
+        return;
+    }
+    if (!ageVal || isNaN(age) || age < 18) {
+        showToast("You must enter a valid age (18 or older).", "error");
+        return;
+    }
+    nav('screen-avatar');
+}
+
+function validateAndNavAvatar() {
+    if (selectedAvatarIndex === null || selectedAvatarIndex === undefined) {
+        showToast("Please select an avatar to proceed.", "error");
+        return;
+    }
+    nav('screen-demographics');
+}
+
+function validateAndNavDemographics() {
+    const myGenderActive = document.querySelector('#my-gender-group .lang-chip.active');
+    const targetGenderActive = document.querySelector('#target-gender-group .lang-chip.active');
+    
+    if (!myGenderActive) {
+        showToast("Please select your gender.", "error");
+        return;
+    }
+    if (!targetGenderActive) {
+        showToast("Please select who you are looking for.", "error");
+        return;
+    }
+    if (selectedLangs.length === 0) {
+        showToast("Please select at least one language.", "error");
+        return;
+    }
+    nav('screen-story');
+}
+
 // Generate random avatars (Github Identicon Style Mockup)
 const avatarGrid = document.getElementById('avatar-grid');
 const emojis = ['👾', '🦊', '🦉', '🐱', '🤖', '👻', '🐙', '🦖', '🐸'];
@@ -239,6 +287,54 @@ function parsePeerHandle(handle) {
 
 // Matching & Submitting
 function startMatching() {
+    const fname = document.getElementById('fname').value.trim();
+    const lname = document.getElementById('lname').value.trim();
+    const ageVal = document.getElementById('my-age').value;
+    const age = parseInt(ageVal, 10);
+    const story = document.getElementById('story-text').value.trim();
+
+    if (!fname) {
+        showToast("First Name is required.", "error");
+        nav('screen-name');
+        return;
+    }
+    if (!lname) {
+        showToast("Last Name is required.", "error");
+        nav('screen-name');
+        return;
+    }
+    if (!ageVal || isNaN(age) || age < 18) {
+        showToast("You must enter a valid age (18 or older).", "error");
+        nav('screen-name');
+        return;
+    }
+    if (selectedAvatarIndex === null || selectedAvatarIndex === undefined) {
+        showToast("Please select an avatar.", "error");
+        nav('screen-avatar');
+        return;
+    }
+    const myGenderActive = document.querySelector('#my-gender-group .lang-chip.active');
+    const targetGenderActive = document.querySelector('#target-gender-group .lang-chip.active');
+    if (!myGenderActive) {
+        showToast("Please select your gender.", "error");
+        nav('screen-demographics');
+        return;
+    }
+    if (!targetGenderActive) {
+        showToast("Please select who you are looking for.", "error");
+        nav('screen-demographics');
+        return;
+    }
+    if (selectedLangs.length === 0) {
+        showToast("Please select at least one language.", "error");
+        nav('screen-demographics');
+        return;
+    }
+    if (!story) {
+        showToast("Please write your story before submitting.", "error");
+        return;
+    }
+
     // Restore waiting screen to loader state
     const waitingScreen = document.getElementById('screen-waiting');
     if (waitingScreen && originalWaitingHtml) {
@@ -252,24 +348,16 @@ function startMatching() {
     nav('screen-waiting');
 
     // Collect data
-    const fname = document.getElementById('fname').value;
-    const lname = document.getElementById('lname').value;
-    const age = parseInt(document.getElementById('my-age').value, 10) || 0;
-    const story = document.getElementById('story-text').value;
-    
-    const myGenderActive = document.querySelector('#my-gender-group .lang-chip.active');
-    const myGender = myGenderActive ? myGenderActive.innerText : '';
-    
-    const targetGenderActive = document.querySelector('#target-gender-group .lang-chip.active');
-    const targetGender = targetGenderActive ? targetGenderActive.innerText : '';
-    
+    const myGender = myGenderActive.innerText;
+    const targetGender = targetGenderActive.innerText;
     const ageMinVal = parseInt(document.getElementById('age-min').value, 10) || 18;
     const ageMaxVal = parseInt(document.getElementById('age-max').value, 10) || 99;
 
-    const avatarIndex = selectedAvatarIndex !== null && selectedAvatarIndex !== undefined ? selectedAvatarIndex : 1;
-    const avatarEmoji = selectedAvatarIndex !== null && selectedAvatarIndex !== undefined ? emojis[selectedAvatarIndex] : '🦊';
+    const avatarIndex = selectedAvatarIndex;
+    const avatarEmoji = emojis[selectedAvatarIndex];
 
     const payload = {
+        token: localStorage.getItem('kolosok_token') || null,
         profile: {
             first_name: fname,
             last_name: lname,
@@ -469,8 +557,9 @@ function showNoMatch() {
             <h2 style="text-align: center; margin-bottom: 8px;">No Matches This Round</h2>
             <p class="subtitle" style="text-align: center; margin-bottom: 24px; max-width: 320px; margin-left: auto; margin-right: auto;">The Confidential AI ran the matching protocol inside the TEE but did not find any highly compatible matches this round.</p>
         </div>
-        <div class="button-container" style="margin-top: 32px;">
-            <button class="btn-primary" onclick="resetApp()">Change preferences</button>
+        <div class="button-container" style="margin-top: 32px; display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <button class="btn-primary" onclick="startMatching()">Reload</button>
+            <button class="btn-secondary" onclick="resetApp()">Change preferences</button>
         </div>
     `;
 }
@@ -627,8 +716,7 @@ function resetApp() {
         pollIntervalId = null;
     }
     stopChatPolling();
-    localStorage.removeItem('kolosok_token'); // Clear token on reset
-    nav('screen-demographics');
+    nav('screen-name');
 }
 
 function restoreSession(token) {
@@ -689,5 +777,45 @@ function restoreSession(token) {
     .catch(error => {
         console.warn("Session restoration failed:", error);
         localStorage.removeItem('kolosok_token');
+    });
+}
+
+function debugReset() {
+    if (!confirm("Are you sure you want to completely reset client storage and server database?")) {
+        return;
+    }
+    
+    const apiHost = window.location.hostname || 'localhost';
+    
+    fetch(`http://${apiHost}:8765/admin/reset`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error("HTTP error: " + response.status);
+        return response.json();
+    })
+    .then(data => {
+        if (data.ok) {
+            console.log("Server database successfully cleared.");
+            showToast("Server DB and Client storage reset!", "success");
+        }
+    })
+    .catch(error => {
+        console.error("Error resetting server database:", error);
+        showToast("Reset server failed, clearing local cache...", "warning");
+    })
+    .finally(() => {
+        localStorage.clear();
+        if (pollIntervalId) {
+            clearInterval(pollIntervalId);
+            pollIntervalId = null;
+        }
+        stopChatPolling();
+        setTimeout(() => {
+            window.location.reload();
+        }, 1000);
     });
 }

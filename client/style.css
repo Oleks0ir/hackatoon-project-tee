@@ -30,13 +30,15 @@ body {
 #tee-status-bar {
     position: absolute;
     top: 14px;
-    left: 5%;
-    width: 90%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    max-width: 90%;
     background-color: var(--tee-bg);
     color: var(--tee-text);
     font-family: monospace;
     font-size: 0.7rem;
-    padding: 8px 16px;
+    padding: 6px 16px;
     border-radius: 9999px; /* Pill shape */
     text-align: center;
     z-index: 1000;
@@ -46,6 +48,31 @@ body {
     gap: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.12);
     border: 1px solid rgba(229, 169, 59, 0.15);
+    white-space: nowrap;
+}
+
+#tee-status-bar button {
+    width: auto;
+    height: auto;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    background: rgba(220, 38, 38, 0.95);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    margin-left: 8px;
+    font-family: inherit;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+#tee-status-bar button:hover {
+    background: rgb(185, 28, 28);
 }
 
 .status-dot {
@@ -199,16 +226,17 @@ dialog::backdrop { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
     line-height: 1.4;
 }
 .message.received { 
-    background: #f0e8dc; 
+    background: #e2e8f0; 
     align-self: flex-start; 
     border-bottom-left-radius: 4px; 
-    color: var(--text-main);
+    color: #0f172a;
 }
 .message.sent { 
     background: var(--primary); 
     color: white; 
     align-self: flex-end; 
     border-bottom-right-radius: 4px; 
+    box-shadow: 0 2px 6px rgba(200, 16, 46, 0.15);
 }
 .chat-input-area { 
     padding: 16px; 

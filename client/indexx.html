@@ -11,7 +11,8 @@
 <body>
     <div id="tee-status-bar">
         <span class="status-dot"></span>
-        Remote Attestation: Verified | TEE Enclave Active | Server: 203.0.113.42
+        <span>🛡️ TEE Active (Verified)</span>
+        <button onclick="debugReset()">Reset DB</button>
     </div>
 
     <main id="app-container">
@@ -106,7 +107,7 @@
                 </div>
             </div>
             <div class="button-container">
-                <button class="btn-primary" onclick="nav('screen-avatar')">Next</button>
+                <button class="btn-primary" onclick="validateAndNavName()">Next</button>
             </div>
         </section>
 
@@ -118,7 +119,7 @@
                 </div>
             </div>
             <div class="button-container">
-                <button class="btn-primary" onclick="nav('screen-demographics')">Next</button>
+                <button class="btn-primary" onclick="validateAndNavAvatar()">Next</button>
             </div>
         </section>
 
@@ -161,7 +162,7 @@
                 </div>
             </div>
             <div class="button-container">
-                <button class="btn-primary" onclick="nav('screen-story')">Next</button>
+                <button class="btn-primary" onclick="validateAndNavDemographics()">Next</button>
             </div>
         </section>
 

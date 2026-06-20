@@ -160,41 +160,82 @@ class MatchEngine:
         matching = payload.get("matching_data") or {}
         age_range = demo.get("age_range") or {}
 
-        # The story is the bio the AI reads; it usually already contains the
-        # "looking for..." part, so we keep `wants` empty.
         text = str(matching.get("story", "")).strip()
         if not text:
             raise ValueError("empty profile (matching_data.story is required)")
 
         first = str(profile.get("first_name", "")).strip()
+        if not first:
+            raise ValueError("first_name is required")
+
+        last = str(profile.get("last_name", "")).strip()
+        if not last:
+            raise ValueError("last_name is required")
+
+        age = demo.get("age") if demo.get("age") is not None else profile.get("age")
+        if age is None or age < 18:
+            raise ValueError("age must be at least 18")
+
+        avatar_index = profile.get("avatar_index")
+        if avatar_index is None:
+            raise ValueError("avatar_index is required")
+
+        my_gender = str(demo.get("my_gender", "")).strip()
+        if not my_gender:
+            raise ValueError("my_gender is required")
+
+        target_gender = str(demo.get("target_gender", "")).strip()
+        if not target_gender:
+            raise ValueError("target_gender is required")
+
+        languages = demo.get("languages")
+        if not languages or len(languages) == 0:
+            raise ValueError("at least one language is required")
+
         emoji = str(profile.get("avatar_emoji", "")).strip()
         handle = " ".join(p for p in (first, emoji) if p) or "someone in the room"
 
-        token = secrets.token_urlsafe(16)
-        user_id = secrets.token_hex(8)
-        # Cheap prefilter vector from the same text the AI will later read.
+        existing_token = payload.get("token")
         vector = embed(text)
-        self._profiles[token] = Profile(
-            user_id=user_id,
-            token=token,
-            handle=handle,
-            last_name=str(profile.get("last_name", "")).strip(),
-            text=text,
-            wants="",
-            dealbreakers=[],
-            my_gender=str(demo.get("my_gender", "")),
-            target_gender=str(demo.get("target_gender", "")),
-            # Age may arrive under demographics.age (original contract) or
-            # profile.age (what the real users API actually sends).
-            age=demo.get("age") if demo.get("age") is not None else profile.get("age"),
-            age_min=age_range.get("min"),
-            age_max=age_range.get("max"),
-            languages=[str(l) for l in demo.get("languages", [])],
-            vector=vector,
-        )
-        self._results.setdefault(token, MatchResult(matched=False))
+        
+        if existing_token and existing_token in self._profiles:
+            token = existing_token
+            p = self._profiles[token]
+            p.handle = handle
+            p.last_name = last
+            p.text = text
+            p.my_gender = my_gender
+            p.target_gender = target_gender
+            p.age = age
+            p.age_min = age_range.get("min")
+            p.age_max = age_range.get("max")
+            p.languages = [str(l) for l in demo.get("languages", [])]
+            p.vector = vector
+            self._results[token] = MatchResult(matched=False)
+            logger.info(f"[ENGINE] Profile updated: handle='{handle}', token={token[:8]}...")
+        else:
+            token = secrets.token_urlsafe(16)
+            user_id = secrets.token_hex(8)
+            self._profiles[token] = Profile(
+                user_id=user_id,
+                token=token,
+                handle=handle,
+                last_name=last,
+                text=text,
+                wants="",
+                dealbreakers=[],
+                my_gender=my_gender,
+                target_gender=target_gender,
+                age=age,
+                age_min=age_range.get("min"),
+                age_max=age_range.get("max"),
+                languages=[str(l) for l in demo.get("languages", [])],
+                vector=vector,
+            )
+            self._results.setdefault(token, MatchResult(matched=False))
+            logger.info(f"[ENGINE] Profile submitted: handle='{handle}', token={token[:8]}...")
+
         self._round_done = False
-        logger.info(f"[ENGINE] Profile submitted: handle='{handle}', gender={demo.get('my_gender')}, target={demo.get('target_gender')}, age={self._profiles[token].age}, token={token[:8]}...")
         self._save_db()
         return token
 
@@ -448,6 +489,14 @@ class MatchEngine:
         except Exception as e:
             logger.error(f"[ENGINE] Failed to load database: {e}")
 
+    def clear_db(self):
+        self._profiles = {}
+        self._results = {}
+        self._chat_rooms = {}
+        self._round_done = False
+        self._save_db()
+        logger.info("[ENGINE] Database successfully cleared via debug admin request.")
+
 
 ENGINE = MatchEngine()
 
@@ -459,6 +508,7 @@ ENGINE = MatchEngine()
 try:
     from fastapi import FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import HTMLResponse
     from pydantic import BaseModel
 
     class ProfileBlock(BaseModel):
@@ -483,6 +533,7 @@ try:
         story: str = ""
 
     class SubmitPayload(BaseModel):
+        token: Optional[str] = None
         profile: ProfileBlock = ProfileBlock()
         demographics: Demographics = Demographics()
         matching_data: MatchingData = MatchingData()
@@ -563,6 +614,11 @@ try:
             raise HTTPException(403, "bad admin token")
         return ENGINE.run_match_round(force=True)
 
+    @app.post("/admin/reset")
+    def admin_reset():
+        ENGINE.clear_db()
+        return {"ok": True}
+
     @app.get("/admin/debug")
     def debug(admin_token: str = ""):
         if admin_token != ADMIN_TOKEN:
@@ -578,6 +634,368 @@ try:
             }
             for p in ENGINE._profiles.values()
         ]
+
+    @app.get("/admin/debug-view", response_class=HTMLResponse)
+    def debug_view():
+        profiles = ENGINE._profiles
+        results = ENGINE._results
+        
+        # Calculate stats
+        total_users = len(profiles)
+        matched_users = 0
+        for token in profiles:
+            res = ENGINE.result_for(token)
+            if res and res.matched:
+                matched_users += 1
+        
+        unmatched_users = total_users - matched_users
+        match_rate = (matched_users / total_users * 100) if total_users > 0 else 0
+        
+        # Generate user rows/cards
+        cards_html = ""
+        for token, p in profiles.items():
+            res = ENGINE.result_for(token)
+            
+            # Match Status Badge
+            if res and res.matched:
+                status_badge = f'<span class="badge matched">Matched with {res.peer_handle} ({res.score:.0f}%)</span>'
+                reasons_li = "".join(f"<li>{r}</li>" for r in res.reasons)
+                match_details = f"""
+                <div class="match-info">
+                    <div class="info-row"><strong>Partner:</strong> {res.peer_handle}</div>
+                    <div class="info-row"><strong>Match Score:</strong> {res.score:.1f}%</div>
+                    <div class="info-row"><strong>Connection Code:</strong> <span class="code">{res.connection_code}</span></div>
+                    <div class="info-row"><strong>Verdict:</strong> {res.verdict}</div>
+                    <div class="info-row">
+                        <strong>Matching Reasons:</strong>
+                        <ul class="reasons-list">
+                            {reasons_li}
+                        </ul>
+                    </div>
+                </div>
+                """
+            else:
+                status_badge = '<span class="badge unmatched">Unmatched</span>'
+                match_details = '<div class="match-info unmatched-info">No match found for this round.</div>'
+            
+            langs = ", ".join(p.languages) if p.languages else "None"
+            
+            cards_html += f"""
+            <div class="user-card">
+                <div class="card-header">
+                    <div class="user-title">
+                        <span class="user-handle">{p.handle}</span>
+                        <span class="user-real-name">({p.last_name})</span>
+                    </div>
+                    {status_badge}
+                </div>
+                <div class="card-body">
+                    <div class="params-grid">
+                        <div class="param-item"><strong>User ID:</strong> <span class="mono">{p.user_id}</span></div>
+                        <div class="param-item"><strong>Token:</strong> <span class="mono">{token[:8]}...</span></div>
+                        <div class="param-item"><strong>Age:</strong> {p.age or "N/A"}</div>
+                        <div class="param-item"><strong>Seeking:</strong> {p.my_gender} seeking {p.target_gender} (Ages {p.age_min or 18}-{p.age_max or 99})</div>
+                        <div class="param-item"><strong>Languages:</strong> {langs}</div>
+                    </div>
+                    <div class="story-box">
+                        <strong>Life Story:</strong>
+                        <p>{p.text}</p>
+                    </div>
+                    {match_details}
+                </div>
+            </div>
+            """
+            
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Kolosok Enclave Debug Dashboard</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+            <style>
+                :root {{
+                    --bg-dark: #0f172a;
+                    --bg-card: #1e293b;
+                    --text-main: #f8fafc;
+                    --text-muted: #94a3b8;
+                    --primary: #c8102e;
+                    --accent-gold: #e5a93b;
+                    --success: #10b981;
+                    --danger: #ef4444;
+                    --border: #334155;
+                }}
+                
+                * {{
+                    box-sizing: border-box;
+                    margin: 0;
+                    padding: 0;
+                }}
+                
+                body {{
+                    font-family: 'Inter', sans-serif;
+                    background-color: var(--bg-dark);
+                    color: var(--text-main);
+                    padding: 40px 20px;
+                    line-height: 1.5;
+                }}
+                
+                .container {{
+                    max-width: 1100px;
+                    margin: 0 auto;
+                }}
+                
+                header {{
+                    margin-bottom: 40px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-bottom: 1px solid var(--border);
+                    padding-bottom: 20px;
+                }}
+                
+                h1 {{
+                    font-size: 2.2rem;
+                    font-weight: 700;
+                    background: linear-gradient(135deg, #f8fafc 0%, var(--accent-gold) 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                }}
+                
+                .subtitle {{
+                    color: var(--text-muted);
+                    font-size: 0.95rem;
+                    margin-top: 4px;
+                }}
+                
+                .stats-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 20px;
+                    margin-bottom: 40px;
+                }}
+                
+                .stat-card {{
+                    background-color: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 16px;
+                    padding: 20px;
+                    text-align: center;
+                    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3);
+                }}
+                
+                .stat-value {{
+                    font-size: 2.2rem;
+                    font-weight: 700;
+                    margin-bottom: 4px;
+                    color: var(--accent-gold);
+                }}
+                
+                .stat-label {{
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 1px;
+                    color: var(--text-muted);
+                }}
+                
+                .user-list {{
+                    display: flex;
+                    flex-direction: column;
+                    gap: 24px;
+                }}
+                
+                .user-card {{
+                    background-color: var(--bg-card);
+                    border: 1px solid var(--border);
+                    border-radius: 20px;
+                    padding: 24px;
+                    box-shadow: 0 15px 30px -10px rgba(0,0,0,0.5);
+                    transition: transform 0.2s, border-color 0.2s;
+                }}
+                
+                .user-card:hover {{
+                    transform: translateY(-2px);
+                    border-color: var(--accent-gold);
+                }}
+                
+                .card-header {{
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 20px;
+                    border-bottom: 1px solid var(--border);
+                    padding-bottom: 14px;
+                }}
+                
+                .user-title {{
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }}
+                
+                .user-handle {{
+                    font-size: 1.4rem;
+                    font-weight: 700;
+                    color: var(--text-main);
+                }}
+                
+                .user-real-name {{
+                    font-size: 1.1rem;
+                    color: var(--text-muted);
+                }}
+                
+                .badge {{
+                    font-size: 0.8rem;
+                    font-weight: 700;
+                    padding: 6px 14px;
+                    border-radius: 9999px;
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }}
+                
+                .badge.matched {{
+                    background-color: rgba(16, 185, 129, 0.15);
+                    color: var(--success);
+                    border: 1px solid var(--success);
+                }}
+                
+                .badge.unmatched {{
+                    background-color: rgba(239, 68, 68, 0.15);
+                    color: var(--danger);
+                    border: 1px solid var(--danger);
+                }}
+                
+                .params-grid {{
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 12px;
+                    font-size: 0.9rem;
+                    margin-bottom: 16px;
+                }}
+                
+                .param-item strong {{
+                    color: var(--accent-gold);
+                }}
+                
+                .mono {{
+                    font-family: 'JetBrains Mono', monospace;
+                    font-size: 0.85rem;
+                    background-color: rgba(0,0,0,0.2);
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                }}
+                
+                .story-box {{
+                    background-color: rgba(0,0,0,0.15);
+                    border-radius: 12px;
+                    padding: 16px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid var(--border);
+                }}
+                
+                .story-box strong {{
+                    display: block;
+                    margin-bottom: 6px;
+                    font-size: 0.85rem;
+                    color: var(--text-muted);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }}
+                
+                .story-box p {{
+                    font-size: 0.95rem;
+                    color: #e2e8f0;
+                    font-style: italic;
+                }}
+                
+                .match-info {{
+                    background-color: rgba(16, 185, 129, 0.05);
+                    border: 1px solid rgba(16, 185, 129, 0.2);
+                    border-radius: 12px;
+                    padding: 20px;
+                }}
+                
+                .match-info.unmatched-info {{
+                    background-color: rgba(239, 68, 68, 0.05);
+                    border: 1px solid rgba(239, 68, 68, 0.2);
+                    color: var(--text-muted);
+                    font-style: italic;
+                    text-align: center;
+                    padding: 12px;
+                }}
+                
+                .info-row {{
+                    margin-bottom: 8px;
+                    font-size: 0.9rem;
+                }}
+                
+                .info-row:last-child {{
+                    margin-bottom: 0;
+                }}
+                
+                .info-row strong {{
+                    color: var(--success);
+                }}
+                
+                .reasons-list {{
+                    margin-left: 20px;
+                    margin-top: 6px;
+                }}
+                
+                .reasons-list li {{
+                    font-size: 0.85rem;
+                    color: #cbd5e1;
+                    margin-bottom: 4px;
+                }}
+                
+                .code {{
+                    font-family: 'JetBrains Mono', monospace;
+                    font-weight: 700;
+                    color: var(--accent-gold);
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <header>
+                    <div>
+                        <h1>Kolosok Enclave</h1>
+                        <p class="subtitle">Secure Hardware Enclave Matched Users Debug Dashboard (Local Mode)</p>
+                    </div>
+                    <div>
+                        <span class="badge matched">TEE Verified</span>
+                    </div>
+                </header>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value">{total_users}</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--success);">{matched_users}</div>
+                        <div class="stat-label">Matched Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: var(--danger);">{unmatched_users}</div>
+                        <div class="stat-label">Unmatched Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #6366f1;">{match_rate:.1f}%</div>
+                        <div class="stat-label">Match Rate</div>
+                    </div>
+                </div>
+                
+                <div class="user-list">
+                    {cards_html or '<div style="text-align:center; padding: 40px; color: var(--text-muted);">No profiles submitted yet.</div>'}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
 
 except ImportError:  # fastapi not installed -> engine-only mode
     app = None
