@@ -1,6 +1,6 @@
 const CACHE_NAME = 'kolosok-cache-v1';
 const ASSETS = [
-  './indexx.html',
+  './index.html',
   './style.css',
   './app.js',
   './icon.svg',

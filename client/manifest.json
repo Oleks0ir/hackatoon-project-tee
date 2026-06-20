@@ -2,7 +2,7 @@
   "name": "Kolosok Confidential Dating",
   "short_name": "Kolosok",
   "description": "Confidential AI Matchmaking in secure hardware enclaves.",
-  "start_url": "./indexx.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#1e1b4b",
   "theme_color": "#4f46e5",

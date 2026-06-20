@@ -30,3 +30,7 @@ pids
 # Output directory
 web/dist/
 dist/
+
+# Database files
+db.json
+server/db.json
