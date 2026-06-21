@@ -159,44 +159,12 @@ if (ageMin && ageMax) {
     updateSliderTrack();
 }
 
-// Multi-match logic definition
-const mockMatches = [
-    {
-        id: "felix",
-        name: "Felix",
-        avatar: "🦊",
-        score: "98%",
-        bio: "AI Researcher at TUM. Loves bouldering and zero-knowledge proofs.",
-        initialMessage: "Hey! The Confidential AI matched us with 98% compatibility. Let's chat!"
-    },
-    {
-        id: "sophie",
-        name: "Sophie",
-        avatar: "🐱",
-        score: "94%",
-        bio: "Cybersecurity student. Passionate about TEEs and coffee.",
-        initialMessage: "Hi there! It says we both love cryptography. What projects are you working on?"
-    },
-    {
-        id: "lukas",
-        name: "Lukas",
-        avatar: "🤖",
-        score: "89%",
-        bio: "Software Engineer. Tinkers with hardware enclaves and IoT.",
-        initialMessage: "Hey! Looks like we've got a lot in common according to the secure match."
-    }
-];
-
 let chats = {};
 let activeMatchId = null;
 
 // Initialize or reset chats history
 function initChats() {
-    chats = {
-        felix: [],
-        sophie: [],
-        lukas: []
-    };
+    chats = {};
 }
 
 // Initialize on page load
@@ -590,18 +558,32 @@ function showRealMatch(matchData) {
     }
 
     // Combine real matches and mock matches
-    const combined = [...realMatches, ...mockMatches];
+    const combined = [...realMatches];
     // Sort descending by score
     combined.sort((a, b) => getNumericScore(b.score) - getNumericScore(a.score));
     
     // Take only the top 5
     const top5 = combined.slice(0, 5);
 
-    // Render top 5 matches
-    top5.forEach(match => {
-        const card = createMatchCard(match);
-        matchesList.appendChild(card);
-    });
+    if (combined.length === 0) {
+        matchesList.innerHTML = `
+            <div style="text-align: center; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 16px; background: rgba(255,255,255,0.02); margin-top: 16px;">
+                <div style="font-size: 3rem; margin-bottom: 16px;">💔</div>
+                <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; color: var(--text-main);">No matches found</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; max-width: 280px; margin: 0 auto;">Try adjusting your preferences or life story to find compatible partners.</p>
+            </div>
+        `;
+        const titleH2 = waitingScreen.querySelector('h2');
+        if (titleH2) titleH2.innerText = "No Matches Found";
+        const subtitleP = waitingScreen.querySelector('.subtitle');
+        if (subtitleP) subtitleP.innerText = "The secure matchmaking algorithm didn't find compatible profiles in this round.";
+    } else {
+        // Render top 5 matches
+        top5.forEach(match => {
+            const card = createMatchCard(match);
+            matchesList.appendChild(card);
+        });
+    }
 
     // Start background polling for chat messages
     startBackgroundChatPolling();
@@ -615,8 +597,8 @@ function showNoMatch() {
 
 function openChatForMatch(matchId) {
     activeMatchId = matchId;
-    let match = mockMatches.find(m => m.id === matchId);
-    if (!match && matchId.startsWith('real_match_')) {
+    let match = null;
+    if (matchId.startsWith('real_match_')) {
         const roomCode = matchId.replace('real_match_', '');
         match = realMatches.find(m => m.connection_code === roomCode);
     }
@@ -662,7 +644,7 @@ function renderMessages() {
     const messages = chats[activeMatchId] || [];
     
     if (messages.length === 0) {
-        let match = mockMatches.find(m => m.id === activeMatchId) || realMatches.find(m => m.id === activeMatchId);
+        let match = realMatches.find(m => m.id === activeMatchId);
         const connectionCode = match ? (match.connection_code || '') : '';
         
         const introCard = document.createElement('div');
