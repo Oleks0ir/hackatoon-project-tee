@@ -1,67 +1,79 @@
-const CACHE_NAME = 'kolosok-cache-v38';
+// Bump CACHE_NAME on every deploy so the activate handler purges stale assets.
+const CACHE_NAME = 'kolosok-cache-v39';
 const ASSETS = [
   './index.html',
   './style.css',
   './app.js',
+  './icon.svg',
   './golden_kolosok.jpg',
-  './kolosok_vector.png',
-  './daytee_logo.png',
   './slavic_ornament.jpg'
 ];
+// API paths must always go to the network (POSTs + polling like /result, /chat).
+const API_PREFIXES = ['/submit', '/result', '/chat', '/admin', '/stats'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('[Service Worker] Caching app shell assets');
-        return cache.addAll(ASSETS);
-      })
+      .then((cache) => cache.addAll(ASSETS))
       .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log('[Service Worker] Removing old cache', key);
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET' || !event.request.url.startsWith(self.location.origin)) {
+  const req = event.request;
+  if (req.method !== 'GET' || !req.url.startsWith(self.location.origin)) {
+    return; // never intercept API POSTs or cross-origin requests
+  }
+
+  const url = new URL(req.url);
+
+  // Never cache API calls — always hit the network so results stay fresh.
+  if (API_PREFIXES.some((p) => url.pathname === p || url.pathname.startsWith(p + '/'))) {
     return;
   }
-  
+
+  // Network-first for the HTML shell and app code, so code updates always win.
+  const isCode = req.mode === 'navigate'
+    || url.pathname === '/'
+    || url.pathname.endsWith('.html')
+    || url.pathname.endsWith('.js');
+
+  if (isCode) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Cache-first for static assets (images, css) with background refresh.
   event.respondWith(
-    caches.match(event.request)
-      .then((cachedResponse) => {
-        if (cachedResponse) {
-          fetch(event.request)
-            .then((networkResponse) => {
-              if (networkResponse.status === 200) {
-                caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-              }
-            })
-            .catch((err) => console.log('[Service Worker] Background fetch failed', err));
-          return cachedResponse;
+    caches.match(req).then((cached) => {
+      const networkFetch = fetch(req).then((res) => {
+        if (res && res.status === 200) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
         }
-        
-        return fetch(event.request)
-          .then((networkResponse) => {
-            if (networkResponse.status === 200) {
-              const responseClone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
-            }
-            return networkResponse;
-          });
-      })
+        return res;
+      }).catch(() => cached);
+      return cached || networkFetch;
+    })
   );
 });
