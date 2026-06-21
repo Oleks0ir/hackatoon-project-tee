@@ -22,21 +22,9 @@
 
 ---
 
-### Step 1: Start the Attestation Server
-1. Navigate to the root directory.
-2. Install cryptography requirements if missing:
-   ```bash
-   pip install cryptography requests fastapi uvicorn
-   ```
-3. Start the FastAPI app:
-   ```bash
-   python -m uvicorn main:app --port 8000
-   ```
-   *Note: If running outside a live TEE context, it will generate a simulated test quote.*
 
----
 
-### Step 2: Start the Matchmaking Backend
+### Step 1: Start the Matchmaking Backend
 1. Navigate to the `server/` directory:
    ```bash
    cd server
@@ -53,7 +41,7 @@
 
 ---
 
-### Step 3: Start the Client Web App
+### Step 2: Start the Client Web App
 1. Navigate to the `client/` directory:
    ```bash
    cd ../client
