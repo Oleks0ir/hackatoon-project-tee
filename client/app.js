@@ -7,6 +7,52 @@ if ('serviceWorker' in navigator) {
     });
 }
 
+// PWA Install Logic
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent the mini-infobar from appearing on mobile
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    // Update UI notify the user they can install the PWA
+    const installBtn = document.getElementById('pwa-install-btn');
+    if (installBtn) {
+        installBtn.style.display = 'block';
+    }
+    console.log('[PWA] beforeinstallprompt event fired and captured');
+});
+
+function triggerPwaInstall() {
+    if (!deferredPrompt) {
+        return;
+    }
+    // Show the install prompt
+    deferredPrompt.prompt();
+    // Wait for the user to respond to the prompt
+    deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+            console.log('[PWA] User accepted the install prompt');
+        } else {
+            console.log('[PWA] User dismissed the install prompt');
+        }
+        deferredPrompt = null;
+        // Hide the install button
+        const installBtn = document.getElementById('pwa-install-btn');
+        if (installBtn) {
+            installBtn.style.display = 'none';
+        }
+    });
+}
+
+window.addEventListener('appinstalled', (evt) => {
+    console.log('[PWA] DayTEE has been installed successfully!');
+    // Hide the install button
+    const installBtn = document.getElementById('pwa-install-btn');
+    if (installBtn) {
+        installBtn.style.display = 'none';
+    }
+});
+
 // Navigation System
 function nav(screenId) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -562,8 +608,8 @@ function showRealMatch(matchData) {
     // Sort descending by score
     combined.sort((a, b) => getNumericScore(b.score) - getNumericScore(a.score));
     
-    // Take only the top 5
-    const top5 = combined.slice(0, 5);
+    // Take only the top 3
+    const top3 = combined.slice(0, 3);
 
     if (combined.length === 0) {
         matchesList.innerHTML = `
@@ -578,8 +624,8 @@ function showRealMatch(matchData) {
         const subtitleP = waitingScreen.querySelector('.subtitle');
         if (subtitleP) subtitleP.innerText = "The secure matchmaking algorithm didn't find compatible profiles in this round.";
     } else {
-        // Render top 5 matches
-        top5.forEach(match => {
+        // Render top 3 matches
+        top3.forEach(match => {
             const card = createMatchCard(match);
             matchesList.appendChild(card);
         });

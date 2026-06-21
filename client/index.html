@@ -41,8 +41,9 @@
                 <!-- Spacer to balance layout distribution -->
                 <div></div>
             </div>
-            <div class="button-container">
+            <div class="button-container" style="display: flex; flex-direction: column; gap: 8px; padding-top: 8px;">
                 <button class="btn-primary" onclick="nav('screen-info-1')">Get Started</button>
+                <button id="pwa-install-btn" class="btn-secondary" style="display: none;" onclick="triggerPwaInstall()">📲 Install DayTEE</button>
             </div>
         </section>
 
