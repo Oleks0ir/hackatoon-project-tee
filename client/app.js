@@ -994,45 +994,7 @@ function restoreSession(token) {
     });
 }
 
-function debugReset() {
-    if (!confirm("Are you sure you want to completely reset client storage and server database?")) {
-        return;
-    }
-    
-    const apiHost = window.location.hostname || 'localhost';
-    
-    fetch(`/admin/reset`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => {
-        if (!response.ok) throw new Error("HTTP error: " + response.status);
-        return response.json();
-    })
-    .then(data => {
-        if (data.ok) {
-            console.log("Server database successfully cleared.");
-            showToast("Server DB and Client storage reset!", "success");
-        }
-    })
-    .catch(error => {
-        console.error("Error resetting server database:", error);
-        showToast("Reset server failed, clearing local cache...", "warning");
-    })
-    .finally(() => {
-        localStorage.clear();
-        if (pollIntervalId) {
-            clearInterval(pollIntervalId);
-            pollIntervalId = null;
-        }
-        stopChatPolling();
-        setTimeout(() => {
-            window.location.reload();
-        }, 1000);
-    });
-}
+
 
 // Age Horizontal Carousel Selector
 function initAgePicker() {
