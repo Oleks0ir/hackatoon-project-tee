@@ -366,50 +366,15 @@ class MatchEngine:
                     # Compute all final scores
                     scored: list[tuple[float, str, str, str, list[str]]] = []
                     for idx, (a, b) in enumerate(inputs):
-                        profile_a = ai._parse_user(self._as_user(a))
-                        profile_b = ai._parse_user(self._as_user(b))
-                        
-                        traits_a = ai._extract_traits(profile_a)
-                        traits_b = ai._extract_traits(profile_b)
-                        
                         semantic_score = semantic_scores[idx]
-                        values_score = ai._values_compatibility(traits_a, traits_b)
-                        lifestyle_score = ai._lifestyle_compatibility(traits_a, traits_b)
-                        social_score = ai._social_energy_compatibility(traits_a, traits_b)
-                        intent_score = ai._relationship_intent_compatibility(traits_a, traits_b)
-                        
-                        dealbreaker_penalty = max(
-                            ai._dealbreaker_penalty(profile_a, profile_b),
-                            ai._dealbreaker_penalty(profile_b, profile_a),
-                        )
-                        
-                        final_score_0_1 = (
-                            0.35 * semantic_score +
-                            0.20 * values_score +
-                            0.20 * lifestyle_score +
-                            0.15 * social_score +
-                            0.10 * intent_score -
-                            0.45 * dealbreaker_penalty
-                        )
-                        final_score_0_1 = ai._clamp(final_score_0_1)
-                        score = round(final_score_0_1 * 100, 1)
+                        score = round(semantic_score * 100, 1)
                         
                         verdict = ai._verdict(score)
                         match_ok = score >= ai.threshold
-                        reasons = ai._safe_explanation(
-                            semantic_score=semantic_score,
-                            values_score=values_score,
-                            lifestyle_score=lifestyle_score,
-                            social_score=social_score,
-                            intent_score=intent_score,
-                            penalty=dealbreaker_penalty,
-                            traits_a=traits_a,
-                            traits_b=traits_b,
-                        )
                         
                         logger.info(f"[ENGINE] AI Result ({a.handle} <-> {b.handle}): Score={score}%, Match={match_ok}, Verdict='{verdict}'")
                         if match_ok:
-                            scored.append((score, a.user_id, b.user_id, verdict, reasons))
+                            scored.append((score, a.user_id, b.user_id, verdict, []))
 
                     # 3. assignment (under lock)
                     with self._lock:
@@ -419,7 +384,10 @@ class MatchEngine:
                         for token in self._profiles:
                             self._results[token] = MatchResult(matched=False, matches=[])
                         
+                        matched_uids = set()
                         for score, a_uid, b_uid, verdict, reasons in scored:
+                            if a_uid in matched_uids or b_uid in matched_uids:
+                                continue
                             a = by_uid.get(a_uid)
                             b = by_uid.get(b_uid)
                             if not a or not b:
@@ -448,6 +416,9 @@ class MatchEngine:
                                     verdict=verdict,
                                     reasons=reasons
                                 ))
+                            
+                            matched_uids.add(a_uid)
+                            matched_uids.add(b_uid)
                             pairs += 1
                             logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
 
