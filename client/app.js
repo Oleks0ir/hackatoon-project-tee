@@ -193,15 +193,9 @@ let activeMatchId = null;
 // Initialize or reset chats history
 function initChats() {
     chats = {
-        felix: [
-            { sender: 'received', text: mockMatches[0].initialMessage }
-        ],
-        sophie: [
-            { sender: 'received', text: mockMatches[1].initialMessage }
-        ],
-        lukas: [
-            { sender: 'received', text: mockMatches[2].initialMessage }
-        ]
+        felix: [],
+        sophie: [],
+        lukas: []
     };
 }
 
@@ -224,12 +218,16 @@ window.addEventListener('DOMContentLoaded', () => {
     if (savedToken) {
         restoreSession(savedToken);
     }
+    
+    // Request notification permission
+    requestNotificationPermission();
 });
 
 let realMatch = null;
 let realMatches = [];
 let pollIntervalId = null;
 let chatPollIntervalId = null;
+let lastMatchData = null;
 
 // Toast helper function
 function showToast(message, type = 'info') {
@@ -353,8 +351,10 @@ function startMatching() {
         waitingScreen.innerHTML = originalWaitingHtml;
     }
 
-    // Refresh chats history for a clean demo run
-    initChats();
+    // Ensure chats history has mock matches initialized on first run, but don't reset on new submissions
+    if (!chats || Object.keys(chats).length === 0) {
+        initChats();
+    }
 
     // Switch to Waiting Screen
     nav('screen-waiting');
@@ -507,6 +507,18 @@ function createMatchCard(match) {
     
     card.onclick = () => openChatForMatch(match.id);
     
+    // Determine the subtitle text (show last message if conversation started, fallback to placeholder)
+    let displaySub = "No messages yet";
+    const matchChats = chats[match.id];
+    if (matchChats && matchChats.length > 0) {
+        const lastMsg = matchChats[matchChats.length - 1];
+        if (lastMsg.sender === 'sent') {
+            displaySub = `You: ${lastMsg.text}`;
+        } else {
+            displaySub = lastMsg.text;
+        }
+    }
+    
     card.innerHTML = `
         <div class="avatar-item selected" style="width: 56px; height: 56px; font-size: 2.2rem; margin: 0; cursor: pointer; flex-shrink: 0; background: #e0e7ff;">${match.avatar}</div>
         <div style="flex: 1; min-width: 0;">
@@ -514,7 +526,7 @@ function createMatchCard(match) {
                 <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-main);">${match.name}</h3>
                 <span style="background: #e2f0fd; color: #1d4ed8; font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">${match.score} Match</span>
             </div>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${match.bio}</p>
+            <p id="subtitle-${match.id}" style="font-size: 0.85rem; color: var(--text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displaySub}</p>
         </div>
     `;
     return card;
@@ -522,6 +534,7 @@ function createMatchCard(match) {
 
 // Show Real Match UI (renders both real matches and mock matches)
 function showRealMatch(matchData) {
+    lastMatchData = matchData;
     const waitingScreen = document.getElementById('screen-waiting');
     if (!waitingScreen) return;
 
@@ -546,9 +559,7 @@ function showRealMatch(matchData) {
             
             // Initialize chat history for this real match if not already present
             if (!chats[matchObj.id]) {
-                chats[matchObj.id] = [
-                    { sender: 'received', text: matchObj.initialMessage }
-                ];
+                chats[matchObj.id] = [];
             }
         });
     }
@@ -570,17 +581,30 @@ function showRealMatch(matchData) {
 
     const matchesList = document.getElementById('matches-list');
     
-    // Add real matches
-    realMatches.forEach(match => {
+    // Helper to get numeric score for sorting
+    function getNumericScore(scoreStr) {
+        if (typeof scoreStr === 'number') return scoreStr;
+        const clean = String(scoreStr || '').replace('%', '').trim();
+        const parsed = parseFloat(clean);
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    // Combine real matches and mock matches
+    const combined = [...realMatches, ...mockMatches];
+    // Sort descending by score
+    combined.sort((a, b) => getNumericScore(b.score) - getNumericScore(a.score));
+    
+    // Take only the top 5
+    const top5 = combined.slice(0, 5);
+
+    // Render top 5 matches
+    top5.forEach(match => {
         const card = createMatchCard(match);
         matchesList.appendChild(card);
     });
 
-    // Add mock matches
-    mockMatches.forEach(match => {
-        const card = createMatchCard(match);
-        matchesList.appendChild(card);
-    });
+    // Start background polling for chat messages
+    startBackgroundChatPolling();
 }
 
 // Show No Match UI
@@ -623,6 +647,9 @@ function openChatForMatch(matchId) {
 
 function showMatchesList() {
     stopChatPolling();
+    if (lastMatchData) {
+        showRealMatch(lastMatchData);
+    }
     nav('screen-waiting');
 }
 
@@ -633,6 +660,47 @@ function renderMessages() {
     messagesContainer.innerHTML = '';
     
     const messages = chats[activeMatchId] || [];
+    
+    if (messages.length === 0) {
+        let match = mockMatches.find(m => m.id === activeMatchId) || realMatches.find(m => m.id === activeMatchId);
+        const connectionCode = match ? (match.connection_code || '') : '';
+        
+        const introCard = document.createElement('div');
+        introCard.className = 'chat-tee-intro';
+        introCard.style.cssText = `
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            margin: auto;
+            max-width: 320px;
+            background: rgba(248, 250, 252, 0.95);
+            border: 1px dashed #cbd5e1;
+            border-radius: 20px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+            font-family: 'Montserrat', sans-serif;
+            animation: fadeIn 0.4s ease-out;
+        `;
+        
+        introCard.innerHTML = `
+            <div style="font-size: 2.5rem; margin-bottom: 12px;">🛡️</div>
+            <h4 style="margin: 0 0 8px 0; font-family: 'Outfit', sans-serif; font-size: 1.1rem; color: var(--text-main);">TEE Secure Chat</h4>
+            <p style="margin: 0 0 16px 0; font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; text-align: center;">
+                This chat is completely isolated within a hardware-secured <strong>Trusted Execution Environment (TEE)</strong>. 
+                Unlike standard messaging apps where metadata is exposed, here all message routing and contact pairs are fully hidden in CPU enclaves.
+            </p>
+            ${connectionCode ? `
+                <div style="background: #e0e7ff; color: #4f46e5; font-size: 0.75rem; font-weight: 700; padding: 6px 12px; border-radius: 9999px; font-family: monospace; letter-spacing: 0.5px;">
+                    Connection: ${connectionCode}
+                </div>
+            ` : ''}
+        `;
+        messagesContainer.appendChild(introCard);
+        return;
+    }
+    
     messages.forEach(msg => {
         const msgElement = document.createElement('div');
         msgElement.className = `message ${msg.sender}`;
@@ -670,8 +738,7 @@ function sendMessage() {
         })
         .then(data => {
             if (data.ok) {
-                const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}&room_id=${encodeURIComponent(roomCode)}`;
-                syncChatMessages(pollUrl, activeMatchId);
+                syncAllChatMessages();
             }
         })
         .catch(error => {
@@ -697,56 +764,82 @@ function startChatPolling() {
     if (chatPollIntervalId) {
         clearInterval(chatPollIntervalId);
     }
-    const token = localStorage.getItem('kolosok_token');
-    if (!token) return;
-    
-    if (!activeMatchId || !activeMatchId.startsWith('real_match_')) return;
-    const roomCode = activeMatchId.replace('real_match_', '');
-    
-    const apiHost = window.location.hostname || 'localhost';
-    const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}&room_id=${encodeURIComponent(roomCode)}`;
-    
     // Immediate sync
-    syncChatMessages(pollUrl, activeMatchId);
+    syncAllChatMessages();
     
     chatPollIntervalId = setInterval(() => {
-        syncChatMessages(pollUrl, activeMatchId);
+        syncAllChatMessages();
     }, 1000);
 }
 
-function syncChatMessages(pollUrl, matchId) {
+function syncAllChatMessages() {
+    const token = localStorage.getItem('kolosok_token');
+    if (!token) return;
+    
+    const apiHost = window.location.hostname || 'localhost';
+    const pollUrl = `http://${apiHost}:8765/chat/all-messages?token=${token}`;
+    
     fetch(pollUrl)
     .then(response => {
         if (!response.ok) throw new Error("HTTP status: " + response.status);
         return response.json();
     })
     .then(data => {
-        if (data.ok && data.messages) {
-            const oldMessages = chats[matchId] || [];
-            const newMessages = data.messages;
+        if (data.ok && data.rooms) {
+            let activeRoomUpdated = false;
             
-            // Compare new messages array with current one
-            let changed = oldMessages.length !== newMessages.length;
-            if (!changed && newMessages.length > 0) {
-                const oldLast = oldMessages[oldMessages.length - 1];
-                const newLast = newMessages[newMessages.length - 1];
-                if (oldLast.text !== newLast.text || oldLast.sender_token !== newLast.sender_token) {
-                    changed = true;
+            realMatches.forEach(match => {
+                const roomCode = match.connection_code;
+                const newMessages = data.rooms[roomCode] || [];
+                const oldMessages = chats[match.id] || [];
+                
+                // Compare arrays
+                let changed = oldMessages.length !== newMessages.length;
+                if (!changed && newMessages.length > 0) {
+                    const oldLast = oldMessages[oldMessages.length - 1];
+                    const newLast = newMessages[newMessages.length - 1];
+                    if (oldLast.text !== newLast.text || oldLast.sender !== newLast.sender) {
+                        changed = true;
+                    }
                 }
-            } else if (newMessages.length > 0) {
-                changed = true;
-            }
+                
+                if (changed) {
+                    // Trigger web notifications for new received messages
+                    if (newMessages.length > oldMessages.length) {
+                        for (let i = oldMessages.length; i < newMessages.length; i++) {
+                            const newMsg = newMessages[i];
+                            if (newMsg.sender === 'received') {
+                                showWebNotification(match.name, newMsg.text, match.id);
+                            }
+                        }
+                    }
+                    
+                    chats[match.id] = newMessages;
+                    
+                    if (activeMatchId === match.id) {
+                        activeRoomUpdated = true;
+                    } else {
+                        // Update card subtitle
+                        const subEl = document.getElementById(`subtitle-${match.id}`);
+                        if (subEl) {
+                            const lastMsg = newMessages[newMessages.length - 1];
+                            let newSub = "No messages yet";
+                            if (newMessages.length > 0) {
+                                newSub = lastMsg.sender === 'sent' ? `You: ${lastMsg.text}` : lastMsg.text;
+                            }
+                            subEl.innerText = newSub;
+                        }
+                    }
+                }
+            });
             
-            if (changed) {
-                chats[matchId] = newMessages;
-                if (activeMatchId === matchId) {
-                    renderMessages();
-                }
+            if (activeRoomUpdated) {
+                renderMessages();
             }
         }
     })
     .catch(error => {
-        console.error("Error polling chat messages:", error);
+        console.error("Error syncing all chat messages:", error);
     });
 }
 
@@ -763,6 +856,10 @@ function resetApp() {
         pollIntervalId = null;
     }
     stopChatPolling();
+    if (backgroundChatPollIntervalId) {
+        clearInterval(backgroundChatPollIntervalId);
+        backgroundChatPollIntervalId = null;
+    }
     nav('screen-name');
 }
 
@@ -994,4 +1091,53 @@ function setAgePickerValue(age) {
     
     // Scroll to position
     picker.scrollLeft = (targetAge - minAge) * itemWidth;
+}
+
+// Web Notification Permission & Dispatcher
+function requestNotificationPermission() {
+    if ('Notification' in window) {
+        if (Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+                console.log("Notification permission state:", permission);
+            });
+        }
+    }
+}
+
+function showWebNotification(title, body, matchId) {
+    if (activeMatchId === matchId && document.getElementById('screen-chat').classList.contains('active') && !document.hidden) {
+        return; // Don't notify if user is already viewing the chat
+    }
+    
+    if ('Notification' in window && Notification.permission === 'granted') {
+        const notification = new Notification(title, {
+            body: body,
+            icon: './daytee_logo.png'
+        });
+        notification.onclick = () => {
+            window.focus();
+            openChatForMatch(matchId);
+        };
+    }
+}
+
+// Background chat messages polling
+let backgroundChatPollIntervalId = null;
+
+function startBackgroundChatPolling() {
+    if (backgroundChatPollIntervalId) {
+        clearInterval(backgroundChatPollIntervalId);
+    }
+    
+    // Immediate sync
+    syncAllChatMessages();
+    
+    backgroundChatPollIntervalId = setInterval(() => {
+        // If active chat is polling, we can skip or run it.
+        // Since they both run syncAllChatMessages, running it is harmless but we can skip to avoid redundant requests.
+        if (activeMatchId && chatPollIntervalId) {
+            return;
+        }
+        syncAllChatMessages();
+    }, 3000); // Poll every 3 seconds
 }

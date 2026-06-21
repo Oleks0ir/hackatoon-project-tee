@@ -28,6 +28,7 @@ import os
 import secrets
 import logging
 import time
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -167,7 +168,26 @@ class MatchEngine:
         self._round_done = False
         self._ai_threshold = ai_threshold
         self._ai = None  # lazily loaded; the model is expensive to construct
+        self._running_matching = False
+        self._pending_match_round = False
+        self._lock = threading.RLock()
+        self._db_dirty = False
+        self._stop_saver = False
         self._load_db()
+        
+        self._saver_thread = threading.Thread(target=self._background_saver, daemon=True)
+        self._saver_thread.start()
+
+    def _background_saver(self):
+        while not self._stop_saver:
+            time.sleep(2.0)
+            try:
+                with self._lock:
+                    if self._db_dirty:
+                        self._save_db_now()
+                        self._db_dirty = False
+            except Exception as e:
+                logger.error(f"[ENGINE] Saver thread error: {e}")
 
     # -- submission ------------------------------------------------------
     def submit(self, payload: dict[str, Any]) -> str:
@@ -223,45 +243,46 @@ class MatchEngine:
         existing_token = payload.get("token")
         vector = embed(text)
         
-        if existing_token and existing_token in self._profiles:
-            token = existing_token
-            p = self._profiles[token]
-            p.handle = handle
-            p.last_name = last
-            p.text = text
-            p.my_gender = my_gender
-            p.target_gender = target_gender
-            p.age = age
-            p.age_min = age_range.get("min")
-            p.age_max = age_range.get("max")
-            p.languages = [str(l) for l in demo.get("languages", [])]
-            p.vector = vector
-            self._results[token] = MatchResult(matched=False)
-            logger.info(f"[ENGINE] Profile updated: handle='{handle}', token={token[:8]}...")
-        else:
-            token = secrets.token_urlsafe(16)
-            user_id = secrets.token_hex(8)
-            self._profiles[token] = Profile(
-                user_id=user_id,
-                token=token,
-                handle=handle,
-                last_name=last,
-                text=text,
-                wants="",
-                dealbreakers=[],
-                my_gender=my_gender,
-                target_gender=target_gender,
-                age=age,
-                age_min=age_range.get("min"),
-                age_max=age_range.get("max"),
-                languages=[str(l) for l in demo.get("languages", [])],
-                vector=vector,
-            )
-            self._results.setdefault(token, MatchResult(matched=False))
-            logger.info(f"[ENGINE] Profile submitted: handle='{handle}', token={token[:8]}...")
+        with self._lock:
+            if existing_token and existing_token in self._profiles:
+                token = existing_token
+                p = self._profiles[token]
+                p.handle = handle
+                p.last_name = last
+                p.text = text
+                p.my_gender = my_gender
+                p.target_gender = target_gender
+                p.age = age
+                p.age_min = age_range.get("min")
+                p.age_max = age_range.get("max")
+                p.languages = [str(l) for l in demo.get("languages", [])]
+                p.vector = vector
+                self._results[token] = MatchResult(matched=False)
+                logger.info(f"[ENGINE] Profile updated: handle='{handle}', token={token[:8]}...")
+            else:
+                token = secrets.token_urlsafe(16)
+                user_id = secrets.token_hex(8)
+                self._profiles[token] = Profile(
+                    user_id=user_id,
+                    token=token,
+                    handle=handle,
+                    last_name=last,
+                    text=text,
+                    wants="",
+                    dealbreakers=[],
+                    my_gender=my_gender,
+                    target_gender=target_gender,
+                    age=age,
+                    age_min=age_range.get("min"),
+                    age_max=age_range.get("max"),
+                    languages=[str(l) for l in demo.get("languages", [])],
+                    vector=vector,
+                )
+                self._results.setdefault(token, MatchResult(matched=False))
+                logger.info(f"[ENGINE] Profile submitted: handle='{handle}', token={token[:8]}...")
 
-        self._round_done = False
-        self._save_db()
+            self._round_done = False
+            self._save_db()
         return token
 
     # -- the one batch round --------------------------------------------
@@ -273,88 +294,186 @@ class MatchEngine:
         return self._ai
 
     def run_match_round(self, top_k: int = PREFILTER_TOP_K, force: bool = False) -> dict:
-        profiles = list(self._profiles.values())
-        by_uid = {p.user_id: p for p in profiles}
-        logger.info(f"[ENGINE] Starting match round with {len(profiles)} active profiles.")
+        with self._lock:
+            if self._running_matching:
+                logger.info("[ENGINE] Match round already in progress. Queueing a pending round.")
+                self._pending_match_round = True
+                return {}
+            self._running_matching = True
 
-        if len(profiles) < 2 and not force:
-            logger.info("[ENGINE] Fewer than 2 profiles and not forced. Postponing match round finalization.")
-            self._round_done = False
-            return {
-                "profiles": len(profiles),
-                "candidate_pairs": 0,
-                "ai_calls": 0,
-                "pairs": 0,
-                "unmatched": len(profiles),
-            }
+        last_summary = {}
+        try:
+            while True:
+                with self._lock:
+                    profiles = list(self._profiles.values())
+                    by_uid = {p.user_id: p for p in profiles}
+                
+                logger.info(f"[ENGINE] Starting match round iteration with {len(profiles)} active profiles.")
+                
+                if len(profiles) < 2 and not force:
+                    logger.info("[ENGINE] Fewer than 2 profiles and not forced. Postponing match round finalization.")
+                    with self._lock:
+                        self._round_done = False
+                        self._save_db()
+                    last_summary = {
+                        "profiles": len(profiles),
+                        "candidate_pairs": 0,
+                        "ai_calls": 0,
+                        "pairs": 0,
+                        "unmatched": len(profiles),
+                    }
+                else:
+                    # 1. prefilter
+                    def eligible(uid_a: str, uid_b: str) -> bool:
+                        a, b = by_uid[uid_a], by_uid[uid_b]
+                        return _gender_ok(a, b) and _age_ok(a, b)
 
-        # 1. hard demographic gate + cheap prefilter -> shortlist of pairs.
-        def eligible(uid_a: str, uid_b: str) -> bool:
-            a, b = by_uid[uid_a], by_uid[uid_b]
-            return _gender_ok(a, b) and _age_ok(a, b)
+                    vectors = [(p.user_id, p.vector) for p in profiles]
+                    shortlist = candidate_pairs(vectors, top_k=top_k, eligible=eligible)
+                    logger.info(f"[ENGINE] Prefilter phase completed. {len(shortlist)} candidate pairs passed demographics/prefilter.")
 
-        vectors = [(p.user_id, p.vector) for p in profiles]
-        shortlist = candidate_pairs(vectors, top_k=top_k, eligible=eligible)
-        logger.info(f"[ENGINE] Prefilter phase completed. {len(shortlist)} candidate pairs passed demographics/prefilter.")
+                    # 2. AI scoring (lock-free)
+                    ai = self._matcher()
+                    inputs = []
+                    for a_uid, b_uid, _cos in shortlist:
+                        a, b = by_uid[a_uid], by_uid[b_uid]
+                        inputs.append((a, b))
 
-        # 2. expensive AI matcher, only on the shortlist.
-        ai = self._matcher()
-        scored: list[tuple[float, str, str, str, list[str]]] = []
-        for a_uid, b_uid, _cos in shortlist:
-            a, b = by_uid[a_uid], by_uid[b_uid]
-            logger.info(f"[ENGINE] Running AI Matcher for: {a.handle} <-> {b.handle}")
-            res = ai.should_match(self._as_user(a), self._as_user(b))
-            score = res.get("score", 0.0)
-            verdict = res.get("verdict", "No Match")
-            match_ok = res.get("match", False)
-            logger.info(f"[ENGINE] AI Result ({a.handle} <-> {b.handle}): Score={score}%, Match={match_ok}, Verdict='{verdict}'")
-            if match_ok:
-                scored.append(
-                    (score, a_uid, b_uid, verdict, res.get("reasons", []))
-                )
+                    semantic_scores = []
+                    if ai.cross_encoder is not None and inputs:
+                        text_pairs = [
+                            (f"Bio: {a.text}\nLooking for: {a.wants}", f"Bio: {b.text}\nLooking for: {b.wants}")
+                            for a, b in inputs
+                        ]
+                        logger.info(f"[ENGINE] Batch predicting {len(text_pairs)} semantic scores via CrossEncoder.")
+                        raw_scores = ai.cross_encoder.predict(text_pairs, batch_size=64, show_progress_bar=False)
+                        for raw_score in raw_scores:
+                            if raw_score > 1.0:
+                                raw_score = raw_score / 5.0
+                            semantic_scores.append(ai._clamp(float(raw_score)))
+                    else:
+                        for a, b in inputs:
+                            text_a = f"Bio: {a.text}\nLooking for: {a.wants}"
+                            text_b = f"Bio: {b.text}\nLooking for: {b.wants}"
+                            words_a = set(ai._clean(text_a).split())
+                            words_b = set(ai._clean(text_b).split())
+                            if not words_a or not words_b:
+                                score = 0.0
+                            else:
+                                score = ai._clamp(3.0 * len(words_a & words_b) / len(words_a | words_b))
+                            semantic_scores.append(score)
 
-        # 3. assignment: all pairs passing the AI threshold are matched, allowing multiple matches per user.
-        scored.sort(reverse=True, key=lambda t: t[0])
-        pairs = 0
-        for token in self._profiles:
-            self._results[token] = MatchResult(matched=False, matches=[])
-        for score, a_uid, b_uid, verdict, reasons in scored:
-            a, b = by_uid[a_uid], by_uid[b_uid]
-            code = "code-" + secrets.token_hex(2)
-            
-            # Add match to a's result
-            self._results[a.token].matched = True
-            self._results[a.token].matches.append(Match(
-                peer_handle=b.handle,
-                connection_code=code,
-                score=score,
-                verdict=verdict,
-                reasons=reasons
-            ))
-            
-            # Add match to b's result
-            self._results[b.token].matched = True
-            self._results[b.token].matches.append(Match(
-                peer_handle=a.handle,
-                connection_code=code,
-                score=score,
-                verdict=verdict,
-                reasons=reasons
-            ))
-            pairs += 1
-            logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
+                    # Compute all final scores
+                    scored: list[tuple[float, str, str, str, list[str]]] = []
+                    for idx, (a, b) in enumerate(inputs):
+                        profile_a = ai._parse_user(self._as_user(a))
+                        profile_b = ai._parse_user(self._as_user(b))
+                        
+                        traits_a = ai._extract_traits(profile_a)
+                        traits_b = ai._extract_traits(profile_b)
+                        
+                        semantic_score = semantic_scores[idx]
+                        values_score = ai._values_compatibility(traits_a, traits_b)
+                        lifestyle_score = ai._lifestyle_compatibility(traits_a, traits_b)
+                        social_score = ai._social_energy_compatibility(traits_a, traits_b)
+                        intent_score = ai._relationship_intent_compatibility(traits_a, traits_b)
+                        
+                        dealbreaker_penalty = max(
+                            ai._dealbreaker_penalty(profile_a, profile_b),
+                            ai._dealbreaker_penalty(profile_b, profile_a),
+                        )
+                        
+                        final_score_0_1 = (
+                            0.35 * semantic_score +
+                            0.20 * values_score +
+                            0.20 * lifestyle_score +
+                            0.15 * social_score +
+                            0.10 * intent_score -
+                            0.45 * dealbreaker_penalty
+                        )
+                        final_score_0_1 = ai._clamp(final_score_0_1)
+                        score = round(final_score_0_1 * 100, 1)
+                        
+                        verdict = ai._verdict(score)
+                        match_ok = score >= ai.threshold
+                        reasons = ai._safe_explanation(
+                            semantic_score=semantic_score,
+                            values_score=values_score,
+                            lifestyle_score=lifestyle_score,
+                            social_score=social_score,
+                            intent_score=intent_score,
+                            penalty=dealbreaker_penalty,
+                            traits_a=traits_a,
+                            traits_b=traits_b,
+                        )
+                        
+                        logger.info(f"[ENGINE] AI Result ({a.handle} <-> {b.handle}): Score={score}%, Match={match_ok}, Verdict='{verdict}'")
+                        if match_ok:
+                            scored.append((score, a.user_id, b.user_id, verdict, reasons))
 
-        self._round_done = True
-        summary = {
-            "profiles": len(profiles),
-            "candidate_pairs": len(shortlist),
-            "ai_calls": len(shortlist),
-            "pairs": pairs,
-            "unmatched": sum(1 for res in self._results.values() if not res.matched),
-        }
-        logger.info(f"[ENGINE] Match round completed. Summary: {summary}")
-        self._save_db()
-        return summary
+                    # 3. assignment (under lock)
+                    with self._lock:
+                        scored.sort(reverse=True, key=lambda t: t[0])
+                        pairs = 0
+                        # Reset results to rebuild them
+                        for token in self._profiles:
+                            self._results[token] = MatchResult(matched=False, matches=[])
+                        
+                        for score, a_uid, b_uid, verdict, reasons in scored:
+                            a = by_uid.get(a_uid)
+                            b = by_uid.get(b_uid)
+                            if not a or not b:
+                                continue
+                            import hashlib
+                            uids = sorted([a.user_id, b.user_id])
+                            combined_hash = hashlib.md5(f"{uids[0]}-{uids[1]}".encode('utf-8')).hexdigest()[:8]
+                            code = f"code-{combined_hash}"
+                            
+                            if a.token in self._results:
+                                self._results[a.token].matched = True
+                                self._results[a.token].matches.append(Match(
+                                    peer_handle=b.handle,
+                                    connection_code=code,
+                                    score=score,
+                                    verdict=verdict,
+                                    reasons=reasons
+                                ))
+                            
+                            if b.token in self._results:
+                                self._results[b.token].matched = True
+                                self._results[b.token].matches.append(Match(
+                                    peer_handle=a.handle,
+                                    connection_code=code,
+                                    score=score,
+                                    verdict=verdict,
+                                    reasons=reasons
+                                ))
+                            pairs += 1
+                            logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
+
+                        self._round_done = True
+                        last_summary = {
+                            "profiles": len(profiles),
+                            "candidate_pairs": len(shortlist),
+                            "ai_calls": len(shortlist),
+                            "pairs": pairs,
+                            "unmatched": sum(1 for res in self._results.values() if not res.matched),
+                        }
+                        logger.info(f"[ENGINE] Match round completed. Summary: {last_summary}")
+                        # Force save to disk for match rounds to ensure matches are fully saved
+                        self._save_db_now()
+
+                # Check if new rounds were scheduled while we were running
+                with self._lock:
+                    if not self._pending_match_round:
+                        self._running_matching = False
+                        break
+                    self._pending_match_round = False
+        except Exception as e:
+            logger.error(f"[ENGINE] Error during match round: {e}", exc_info=True)
+            with self._lock:
+                self._running_matching = False
+                self._pending_match_round = False
 
     @staticmethod
     def _as_user(p: Profile) -> dict[str, Any]:
@@ -366,74 +485,109 @@ class MatchEngine:
         }
 
     # -- reads -----------------------------------------------------------
+    # -- reads -----------------------------------------------------------
     def result_for(self, token: str) -> MatchResult | None:
-        if token not in self._profiles:
-            logger.warning(f"[ENGINE] Result poll rejected: unknown token='{token[:8]}...'")
-            return None
-        res = self._results.get(token, MatchResult(matched=False))
-        logger.info(f"[ENGINE] Result poll: handle='{self._profiles[token].handle}', matched={res.matched}, token='{token[:8]}...'")
-        return res
+        with self._lock:
+            if token not in self._profiles:
+                logger.warning(f"[ENGINE] Result poll rejected: unknown token='{token[:8]}...'")
+                return None
+            res = self._results.get(token, MatchResult(matched=False))
+            logger.info(f"[ENGINE] Result poll: handle='{self._profiles[token].handle}', matched={res.matched}, token='{token[:8]}...'")
+            return res
 
     def stats(self) -> dict:
-        matched = sum(1 for r in self._results.values() if r.matched)
-        return {
-            "profiles": len(self._profiles),
-            "matched_people": matched,
-            "pairs": matched // 2,
-            "round_done": self._round_done,
-        }
+        with self._lock:
+            matched = sum(1 for r in self._results.values() if r.matched)
+            return {
+                "profiles": len(self._profiles),
+                "matched_people": matched,
+                "pairs": matched // 2,
+                "round_done": self._round_done,
+            }
 
     def send_message(self, token: str, text: str, room_id: Optional[str] = None) -> bool:
-        profile = self._profiles.get(token)
-        if not profile:
-            raise ValueError("unknown token")
-        res = self._results.get(token)
-        if not res or not res.matched:
-            raise ValueError("user is not matched")
-        if not room_id:
-            if hasattr(res, "matches") and res.matches:
-                room_id = res.matches[0].connection_code
-            else:
-                room_id = getattr(res, "connection_code", None)
-        if not room_id:
-            raise ValueError("no room found")
-        self._chat_rooms.setdefault(room_id, [])
-        msg = ChatMessage(
-            sender_token=token,
-            sender_handle=profile.handle,
-            text=text,
-            timestamp=time.time()
-        )
-        self._chat_rooms[room_id].append(msg)
-        logger.info(f"[ENGINE] Chat message sent: from='{profile.handle}' room='{room_id}' text='{text}'")
-        self._save_db()
-        return True
+        with self._lock:
+            profile = self._profiles.get(token)
+            if not profile:
+                raise ValueError("unknown token")
+            res = self._results.get(token)
+            if not res or not res.matched:
+                raise ValueError("user is not matched")
+            if not room_id:
+                if hasattr(res, "matches") and res.matches:
+                    room_id = res.matches[0].connection_code
+                else:
+                    room_id = getattr(res, "connection_code", None)
+            if not room_id:
+                raise ValueError("no room found")
+            self._chat_rooms.setdefault(room_id, [])
+            msg = ChatMessage(
+                sender_token=token,
+                sender_handle=profile.handle,
+                text=text,
+                timestamp=time.time()
+            )
+            self._chat_rooms[room_id].append(msg)
+            logger.info(f"[ENGINE] Chat message sent: from='{profile.handle}' room='{room_id}' text='{text}'")
+            self._save_db()
+            return True
 
     def get_messages(self, token: str, room_id: Optional[str] = None) -> list[dict]:
-        profile = self._profiles.get(token)
-        if not profile:
-            return []
-        res = self._results.get(token)
-        if not res or not res.matched:
-            return []
-        if not room_id:
-            if hasattr(res, "matches") and res.matches:
-                room_id = res.matches[0].connection_code
-            else:
-                room_id = getattr(res, "connection_code", None)
-        if not room_id:
-            return []
-        messages = self._chat_rooms.get(room_id, [])
-        return [
-            {
-                "sender": "sent" if m.sender_token == token else "received",
-                "text": m.text,
-                "sender_handle": m.sender_handle
-            }
-            for m in messages
-        ]
+        with self._lock:
+            profile = self._profiles.get(token)
+            if not profile:
+                return []
+            res = self._results.get(token)
+            if not res or not res.matched:
+                return []
+            if not room_id:
+                if hasattr(res, "matches") and res.matches:
+                    room_id = res.matches[0].connection_code
+                else:
+                    room_id = getattr(res, "connection_code", None)
+            if not room_id:
+                return []
+            messages = self._chat_rooms.get(room_id, [])
+            return [
+                {
+                    "sender": "sent" if m.sender_token == token else "received",
+                    "text": m.text,
+                    "sender_handle": m.sender_handle
+                }
+                for m in messages
+            ]
+
+    def get_all_messages(self, token: str) -> dict[str, list[dict]]:
+        with self._lock:
+            profile = self._profiles.get(token)
+            if not profile:
+                return {}
+            res = self._results.get(token)
+            if not res or not res.matched:
+                return {}
+            
+            all_rooms_messages = {}
+            for m in getattr(res, "matches", []):
+                room_id = m.connection_code
+                if not room_id:
+                    continue
+                messages = self._chat_rooms.get(room_id, [])
+                all_rooms_messages[room_id] = [
+                    {
+                        "sender": "sent" if msg.sender_token == token else "received",
+                        "text": msg.text,
+                        "sender_handle": msg.sender_handle,
+                        "timestamp": msg.timestamp
+                    }
+                    for msg in messages
+                ]
+            return all_rooms_messages
 
     def _save_db(self):
+        # Simply mark database as dirty; the saver thread will write it to disk within 2 seconds
+        self._db_dirty = True
+
+    def _save_db_now(self):
         try:
             db_path = os.path.join(os.path.dirname(__file__), "db.json")
             data = {
@@ -484,11 +638,14 @@ class MatchEngine:
                     for m in messages
                 ]
             import json
-            with open(db_path, "w", encoding="utf-8") as f:
+            # Atomic swap to prevent disk corruption
+            temp_path = db_path + ".tmp"
+            with open(temp_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            logger.info("[ENGINE] Database successfully saved.")
+            os.replace(temp_path, db_path)
+            logger.info("[ENGINE] Database successfully saved to disk.")
         except Exception as e:
-            logger.error(f"[ENGINE] Failed to save database: {e}")
+            logger.error(f"[ENGINE] Failed to save database to disk: {e}")
 
     def _load_db(self):
         try:
@@ -562,12 +719,13 @@ class MatchEngine:
             logger.error(f"[ENGINE] Failed to load database: {e}")
 
     def clear_db(self):
-        self._profiles = {}
-        self._results = {}
-        self._chat_rooms = {}
-        self._round_done = False
-        self._save_db()
-        logger.info("[ENGINE] Database successfully cleared via debug admin request.")
+        with self._lock:
+            self._profiles = {}
+            self._results = {}
+            self._chat_rooms = {}
+            self._round_done = False
+            self._save_db_now()
+            logger.info("[ENGINE] Database successfully cleared via debug admin request.")
 
 
 ENGINE = MatchEngine()
@@ -578,7 +736,7 @@ ENGINE = MatchEngine()
 # Guarded so the engine above stays importable without fastapi installed.
 # ----------------------------------------------------------------------
 try:
-    from fastapi import FastAPI, HTTPException, Request
+    from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
     from pydantic import BaseModel
@@ -637,11 +795,11 @@ try:
         return response
 
     @app.post("/submit")
-    def submit(payload: SubmitPayload):
+    def submit(payload: SubmitPayload, background_tasks: BackgroundTasks):
         try:
             token = ENGINE.submit(payload.model_dump())
-            logger.info("[HTTP] Running match round automatically after profile submission.")
-            ENGINE.run_match_round(force=False)
+            logger.info("[HTTP] Queueing matchmaking round in background.")
+            background_tasks.add_task(ENGINE.run_match_round, force=False)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True, "token": token}
@@ -661,6 +819,14 @@ try:
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True, "messages": messages}
+
+    @app.get("/chat/all-messages")
+    def chat_all_messages(token: str):
+        try:
+            rooms_messages = ENGINE.get_all_messages(token)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+        return {"ok": True, "rooms": rooms_messages}
 
     @app.get("/result/{token}")
     def result(token: str):
@@ -706,6 +872,8 @@ try:
     def debug(admin_token: str = ""):
         if admin_token != ADMIN_TOKEN:
             raise HTTPException(403, "bad admin token")
+        with ENGINE._lock:
+            profiles_copy = list(ENGINE._profiles.values())
         return [
             {
                 "handle": p.handle,
@@ -715,19 +883,20 @@ try:
                 "age_min": p.age_min,
                 "age_max": p.age_max,
             }
-            for p in ENGINE._profiles.values()
+            for p in profiles_copy
         ]
 
     @app.get("/admin/debug-view", response_class=HTMLResponse)
     def debug_view():
-        profiles = ENGINE._profiles
-        results = ENGINE._results
+        with ENGINE._lock:
+            profiles_copy = dict(ENGINE._profiles)
+            results_copy = dict(ENGINE._results)
         
         # Calculate stats
-        total_users = len(profiles)
+        total_users = len(profiles_copy)
         matched_users = 0
-        for token in profiles:
-            res = ENGINE.result_for(token)
+        for token in profiles_copy:
+            res = results_copy.get(token)
             if res and res.matched:
                 matched_users += 1
         
@@ -736,8 +905,8 @@ try:
         
         # Generate user rows/cards
         cards_html = ""
-        for token, p in profiles.items():
-            res = ENGINE.result_for(token)
+        for token, p in profiles_copy.items():
+            res = results_copy.get(token)
             
             # Match Status Badge
             if res and res.matched:
