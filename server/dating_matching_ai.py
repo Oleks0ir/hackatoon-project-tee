@@ -33,6 +33,7 @@ from typing import Dict, List, Any
 import re
 import json
 import math
+from sentence_transformers import CrossEncoder
 
 
 @dataclass
@@ -72,18 +73,9 @@ class DatingMatchingAI:
         self.threshold = threshold
         self.verbose = verbose
         self.model_name = "cross-encoder/stsb-TinyBERT-L-4"
-        self.cross_encoder = None
-
-        try:
-            from sentence_transformers import CrossEncoder
-            self.cross_encoder = CrossEncoder(self.model_name)
-            if self.verbose:
-                print(f"[DatingMatchingAI] Loaded AI model: {self.model_name}")
-        except Exception as e:
-            if self.verbose:
-                print("[DatingMatchingAI] WARNING: AI model not loaded.")
-                print("[DatingMatchingAI] Reason:", str(e))
-                print("[DatingMatchingAI] Fallback mode enabled.")
+        self.cross_encoder = CrossEncoder(self.model_name)
+        if self.verbose:
+            print(f"[DatingMatchingAI] Loaded AI model: {self.model_name}")
 
     # ============================================================
     # PUBLIC API
@@ -161,23 +153,13 @@ class DatingMatchingAI:
         text_a = f"Bio: {a.text}\nLooking for: {a.wants}"
         text_b = f"Bio: {b.text}\nLooking for: {b.wants}"
 
-        if self.cross_encoder is not None:
-            raw_score = float(self.cross_encoder.predict([(text_a, text_b)])[0])
+        raw_score = float(self.cross_encoder.predict([(text_a, text_b)])[0])
 
-            # Some models output 0..1, others 0..5.
-            if raw_score > 1.0:
-                raw_score = raw_score / 5.0
+        # Some models output 0..1, others 0..5.
+        if raw_score > 1.0:
+            raw_score = raw_score / 5.0
 
-            return self._clamp(raw_score)
-
-        # Safe fallback if model is unavailable.
-        words_a = set(self._clean(text_a).split())
-        words_b = set(self._clean(text_b).split())
-
-        if not words_a or not words_b:
-            return 0.0
-
-        return self._clamp(3.0 * len(words_a & words_b) / len(words_a | words_b))
+        return self._clamp(raw_score)
 
     # ============================================================
     # OUTPUT
