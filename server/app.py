@@ -128,6 +128,7 @@ class Match:
 class MatchResult:
     matched: bool
     matches: list[Match] = field(default_factory=list)
+    evaluations: list[dict] = field(default_factory=list)
 
     @property
     def peer_handle(self) -> str | None:
@@ -365,6 +366,7 @@ class MatchEngine:
 
                     # Compute all final scores
                     scored: list[tuple[float, str, str, str, list[str]]] = []
+                    debug_scores_temp = {}
                     for idx, (a, b) in enumerate(inputs):
                         semantic_score = semantic_scores[idx]
                         score = round(semantic_score * 100, 1)
@@ -375,6 +377,21 @@ class MatchEngine:
                         logger.info(f"[ENGINE] AI Result ({a.handle} <-> {b.handle}): Score={score}%, Match={match_ok}, Verdict='{verdict}'")
                         if match_ok:
                             scored.append((score, a.user_id, b.user_id, verdict, []))
+                        
+                        if a.token not in debug_scores_temp:
+                            debug_scores_temp[a.token] = []
+                        if b.token not in debug_scores_temp:
+                            debug_scores_temp[b.token] = []
+                        debug_scores_temp[a.token].append({
+                            "peer_handle": b.handle,
+                            "score": score,
+                            "verdict": verdict
+                        })
+                        debug_scores_temp[b.token].append({
+                            "peer_handle": a.handle,
+                            "score": score,
+                            "verdict": verdict
+                        })
 
                     # 3. assignment (under lock)
                     with self._lock:
@@ -382,7 +399,7 @@ class MatchEngine:
                         pairs = 0
                         # Reset results to rebuild them
                         for token in self._profiles:
-                            self._results[token] = MatchResult(matched=False, matches=[])
+                            self._results[token] = MatchResult(matched=False, matches=[], evaluations=debug_scores_temp.get(token, []))
                         
                         matched_uids = set()
                         for score, a_uid, b_uid, verdict, reasons in scored:
@@ -596,7 +613,8 @@ class MatchEngine:
                             "reasons": m.reasons
                         }
                         for m in getattr(res, "matches", [])
-                    ]
+                    ],
+                    "evaluations": getattr(res, "evaluations", [])
                 }
             for room_id, messages in self._chat_rooms.items():
                 data["chat_rooms"][room_id] = [
@@ -659,7 +677,8 @@ class MatchEngine:
                     ]
                     self._results[token] = MatchResult(
                         matched=res_data["matched"],
-                        matches=matches
+                        matches=matches,
+                        evaluations=res_data.get("evaluations", [])
                     )
                 else:
                     matches = []
@@ -673,7 +692,8 @@ class MatchEngine:
                         ))
                     self._results[token] = MatchResult(
                         matched=res_data.get("matched", False),
-                        matches=matches
+                        matches=matches,
+                        evaluations=res_data.get("evaluations", [])
                     )
             for room_id, msgs_data in data.get("chat_rooms", {}).items():
                 self._chat_rooms[room_id] = [
@@ -906,7 +926,29 @@ try:
                 """
             else:
                 status_badge = '<span class="badge unmatched">Unmatched</span>'
-                match_details = '<div class="match-info unmatched-info">No match found for this round.</div>'
+                eval_html = ""
+                if res and getattr(res, "evaluations", None):
+                    eval_items = ""
+                    for ev in res.evaluations:
+                        eval_items += f"""
+                        <div class="eval-item" style="border-bottom: 1px dashed var(--border); padding-bottom: 8px; margin-bottom: 8px;">
+                            <div class="info-row"><strong>Evaluated Partner:</strong> {ev['peer_handle']}</div>
+                            <div class="info-row"><strong>AI Score:</strong> {ev['score']:.1f}%</div>
+                            <div class="info-row"><strong>Verdict:</strong> {ev['verdict']}</div>
+                        </div>
+                        """
+                    eval_html = f"""
+                    <div class="eval-section" style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+                        <strong style="color: var(--accent-gold); display: block; margin-bottom: 8px; font-size: 0.9rem;">Calculated Compatibility Scores (Debugging):</strong>
+                        {eval_items}
+                    </div>
+                    """
+                match_details = f"""
+                <div class="match-info unmatched-info">
+                    No match found for this round.
+                    {eval_html}
+                </div>
+                """
             
             langs = ", ".join(p.languages) if p.languages else "None"
             
