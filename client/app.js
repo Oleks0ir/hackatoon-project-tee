@@ -409,7 +409,7 @@ function startMatching() {
     console.log("Payload:", JSON.stringify(payload, null, 2));
     
     const apiHost = window.location.hostname || 'localhost';
-    fetch(`http://${apiHost}:8765/submit`, {
+    fetch(`/submit`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -448,7 +448,7 @@ function startPolling(token) {
     }
     
     const apiHost = window.location.hostname || 'localhost';
-    const pollUrl = `http://${apiHost}:8765/result/${token}`;
+    const pollUrl = `/result/${token}`;
     
     pollIntervalId = setInterval(() => {
         fetch(pollUrl)
@@ -725,7 +725,7 @@ function sendMessage() {
         const roomCode = activeMatchId.replace('real_match_', '');
         const apiHost = window.location.hostname || 'localhost';
         
-        fetch(`http://${apiHost}:8765/chat/send`, {
+        fetch(`/chat/send`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -777,7 +777,7 @@ function syncAllChatMessages() {
     if (!token) return;
     
     const apiHost = window.location.hostname || 'localhost';
-    const pollUrl = `http://${apiHost}:8765/chat/all-messages?token=${token}`;
+    const pollUrl = `/chat/all-messages?token=${token}`;
     
     fetch(pollUrl)
     .then(response => {
@@ -866,7 +866,7 @@ function resetApp() {
 function restoreSession(token) {
     console.log("Found existing token, attempting to restore session...");
     const apiHost = window.location.hostname || 'localhost';
-    const pollUrl = `http://${apiHost}:8765/result/${token}`;
+    const pollUrl = `/result/${token}`;
     
     showToast("Restoring secure session...", "info");
     
@@ -973,7 +973,7 @@ function debugReset() {
     
     const apiHost = window.location.hostname || 'localhost';
     
-    fetch(`http://${apiHost}:8765/admin/reset`, {
+    fetch(`/admin/reset`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
