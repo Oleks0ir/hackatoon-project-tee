@@ -2,30 +2,6 @@
 dating_matching_ai.py
 
 Final AI Matching module for a privacy-focused dating app.
-
-Your part of the project:
-    Two private user profiles -> AI analysis -> compatibility score -> match True/False
-
-Why this is good for TEE:
-    In the real system this file runs inside the TEE.
-    Raw profile texts stay inside the secure environment.
-    The app receives only:
-        - match True/False
-        - score
-        - safe explanation
-        - anonymized trait vectors if needed for debugging
-
-Install:
-    python -m pip install sentence-transformers torch numpy
-
-Run test:
-    python dating_matching_ai.py
-
-Import in project:
-    from dating_matching_ai import DatingMatchingAI
-
-    matcher = DatingMatchingAI(threshold=75)
-    result = matcher.should_match(user_a, user_b)
 """
 
 from dataclasses import dataclass, field
@@ -46,26 +22,6 @@ class UserProfile:
 class DatingMatchingAI:
     """
     Final API class for the project.
-
-    Main function:
-        should_match(user_a, user_b)
-
-    Input:
-        user_a = {
-            "id": "alice",
-            "text": "I love hiking, jazz, calm evenings...",
-            "wants": "Looking for serious relationship...",
-            "dealbreakers": ["smoking"]
-        }
-
-    Output:
-        {
-            "match": True,
-            "score": 83.7,
-            "verdict": "Strong match",
-            "reasons": [...],
-            "details": {...}
-        }
     """
 
     def __init__(self, threshold: float = 75.0, verbose: bool = True):
@@ -85,16 +41,7 @@ class DatingMatchingAI:
                 print("[DatingMatchingAI] Reason:", str(e))
                 print("[DatingMatchingAI] Fallback mode enabled.")
 
-    # ============================================================
-    # PUBLIC API
-    # ============================================================
-
     def should_match(self, user_a: Dict[str, Any], user_b: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Main function for the backend.
-
-        The backend should call only this function.
-        """
         profile_a = self._parse_user(user_a)
         profile_b = self._parse_user(user_b)
 
@@ -113,11 +60,11 @@ class DatingMatchingAI:
         )
 
         final_score_0_1 = (
-            0.35 * semantic_score +
-            0.20 * values_score +
-            0.20 * lifestyle_score +
-            0.15 * social_score +
-            0.10 * intent_score -
+            0.75 * semantic_score +
+            0.077 * values_score +
+            0.077 * lifestyle_score +
+            0.058 * social_score +
+            0.038 * intent_score -
             0.45 * dealbreaker_penalty
         )
 
@@ -148,28 +95,12 @@ class DatingMatchingAI:
                 "social_energy_score": round(social_score, 3),
                 "relationship_intent_score": round(intent_score, 3),
                 "dealbreaker_penalty": round(dealbreaker_penalty, 3),
-
-                # For real product, you can remove these two fields from API output.
-                # They are useful for demo/debug.
-                "anonymous_traits_user_a": {k: round(v, 2) for k, v in traits_a.items()},
-                "anonymous_traits_user_b": {k: round(v, 2) for k, v in traits_b.items()},
             },
         }
 
     def analyze_user(self, user: Dict[str, Any]) -> Dict[str, float]:
-        """
-        Optional function:
-        Converts one raw profile into an anonymized trait vector.
-
-        In TEE architecture:
-            raw text -> TEE -> trait vector
-        """
         profile = self._parse_user(user)
         return self._extract_traits(profile)
-
-    # ============================================================
-    # PARSING
-    # ============================================================
 
     def _parse_user(self, data: Dict[str, Any]) -> UserProfile:
         if not isinstance(data, dict):
@@ -181,10 +112,6 @@ class DatingMatchingAI:
             wants=str(data.get("wants", "")),
             dealbreakers=list(data.get("dealbreakers", [])),
         )
-
-    # ============================================================
-    # TEXT UTILS
-    # ============================================================
 
     def _clean(self, text: str) -> str:
         text = text.lower()
@@ -209,20 +136,7 @@ class DatingMatchingAI:
     def _closeness(self, a: float, b: float) -> float:
         return 1.0 - abs(a - b)
 
-    # ============================================================
-    # PRIVATE TRAIT EXTRACTION
-    # ============================================================
-
     def _extract_traits(self, profile: UserProfile) -> Dict[str, float]:
-        """
-        Explainable local trait extraction.
-
-        This is intentionally stable for hackathon demo.
-        It creates a "private compatibility profile" from raw user text.
-
-        In production, this block could be replaced by a local LLM
-        that returns the same trait JSON.
-        """
         text = f"{profile.text}\nLooking for: {profile.wants}"
 
         trait_keywords = {
@@ -319,7 +233,6 @@ class DatingMatchingAI:
 
             traits[trait] = value
 
-        # Smooth opposite traits
         self._smooth_opposites(traits)
 
         return traits
@@ -337,25 +250,14 @@ class DatingMatchingAI:
             if traits[b] > 0.65:
                 traits[a] = min(traits[a], 0.35)
 
-    # ============================================================
-    # AI SEMANTIC MODEL
-    # ============================================================
-
     def _semantic_ai_score(self, a: UserProfile, b: UserProfile) -> float:
-        """
-        Real Transformer model score.
-        It reads both profiles together and estimates semantic compatibility.
-        """
         text_a = f"Bio: {a.text}\nLooking for: {a.wants}"
         text_b = f"Bio: {b.text}\nLooking for: {b.wants}"
 
         if self.cross_encoder is not None:
             raw_score = float(self.cross_encoder.predict([(text_a, text_b)])[0])
-
-            # Some models output 0..1, others 0..5.
             if raw_score > 1.0:
                 raw_score = raw_score / 5.0
-
             return self._clamp(raw_score)
 
         # Safe fallback if model is unavailable.
@@ -366,10 +268,6 @@ class DatingMatchingAI:
             return 0.0
 
         return self._clamp(3.0 * len(words_a & words_b) / len(words_a | words_b))
-
-    # ============================================================
-    # COMPATIBILITY SCORES
-    # ============================================================
 
     def _values_compatibility(self, a: Dict[str, float], b: Dict[str, float]) -> float:
         keys = [
@@ -404,7 +302,6 @@ class DatingMatchingAI:
         serious_match = self._closeness(a["serious_intent"], b["serious_intent"])
         casual_match = self._closeness(a["casual_intent"], b["casual_intent"])
 
-        # If one wants serious and the other wants casual, punish strongly.
         conflict = 0.0
         if a["serious_intent"] > 0.65 and b["casual_intent"] > 0.65:
             conflict = 0.5
@@ -423,10 +320,6 @@ class DatingMatchingAI:
                 penalty += 0.35
 
         return self._clamp(penalty)
-
-    # ============================================================
-    # OUTPUT
-    # ============================================================
 
     def _verdict(self, score: float) -> str:
         if score >= 85:
@@ -448,11 +341,6 @@ class DatingMatchingAI:
         traits_a: Dict[str, float],
         traits_b: Dict[str, float],
     ) -> List[str]:
-        """
-        Safe explanation:
-        Does not expose raw private text.
-        Gives only abstract compatibility reasons.
-        """
         reasons = []
 
         if semantic_score >= 0.65:
@@ -497,10 +385,6 @@ class DatingMatchingAI:
 
         return reasons
 
-
-# ============================================================
-# DEMO / LOCAL TEST
-# ============================================================
 
 def demo() -> None:
     matcher = DatingMatchingAI(threshold=75)

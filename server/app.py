@@ -366,6 +366,7 @@ class MatchEngine:
 
                     # Compute all final scores
                     scored: list[tuple[float, str, str, str, list[str]]] = []
+                    debug_scores_temp = {}
                     for idx, (a, b) in enumerate(inputs):
                         profile_a = ai._parse_user(self._as_user(a))
                         profile_b = ai._parse_user(self._as_user(b))
@@ -385,11 +386,11 @@ class MatchEngine:
                         )
                         
                         final_score_0_1 = (
-                            0.35 * semantic_score +
-                            0.20 * values_score +
-                            0.20 * lifestyle_score +
-                            0.15 * social_score +
-                            0.10 * intent_score -
+                            0.75 * semantic_score +
+                            0.077 * values_score +
+                            0.077 * lifestyle_score +
+                            0.058 * social_score +
+                            0.038 * intent_score -
                             0.45 * dealbreaker_penalty
                         )
                         final_score_0_1 = ai._clamp(final_score_0_1)
@@ -435,7 +436,10 @@ class MatchEngine:
                         for token in self._profiles:
                             self._results[token] = MatchResult(matched=False, matches=[], evaluations=debug_scores_temp.get(token, []))
                         
+                        matched_uids = set()
                         for score, a_uid, b_uid, verdict, reasons in scored:
+                            if a_uid in matched_uids or b_uid in matched_uids:
+                                continue
                             a = by_uid.get(a_uid)
                             b = by_uid.get(b_uid)
                             if not a or not b:
@@ -464,6 +468,9 @@ class MatchEngine:
                                     verdict=verdict,
                                     reasons=reasons
                                 ))
+                            
+                            matched_uids.add(a_uid)
+                            matched_uids.add(b_uid)
                             pairs += 1
                             logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
 
