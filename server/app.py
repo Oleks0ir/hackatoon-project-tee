@@ -239,7 +239,10 @@ class MatchEngine:
             raise ValueError("at least one language is required")
 
         emoji = str(profile.get("avatar_emoji", "")).strip()
-        handle = " ".join(p for p in (first, emoji) if p) or "someone in the room"
+        if age:
+            handle = f"{first}, {age} {emoji}".strip() if emoji else f"{first}, {age}"
+        else:
+            handle = " ".join(p for p in (first, emoji) if p) or "someone in the room"
 
         existing_token = payload.get("token")
         vector = embed(text)
