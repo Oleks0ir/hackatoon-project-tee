@@ -1,10 +1,11 @@
-const CACHE_NAME = 'kolosok-cache-v1';
+const CACHE_NAME = 'kolosok-cache-v38';
 const ASSETS = [
   './index.html',
   './style.css',
   './app.js',
-  './icon.svg',
   './golden_kolosok.jpg',
+  './kolosok_vector.png',
+  './daytee_logo.png',
   './slavic_ornament.jpg'
 ];
 

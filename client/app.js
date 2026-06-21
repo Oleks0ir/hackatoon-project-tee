@@ -11,6 +11,14 @@ if ('serviceWorker' in navigator) {
 function nav(screenId) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(screenId).classList.add('active');
+    
+    if (screenId === 'screen-name') {
+        const ageInput = document.getElementById('my-age');
+        const currentAge = ageInput ? ageInput.value : 18;
+        setTimeout(() => {
+            setAgePickerValue(currentAge);
+        }, 50);
+    }
 }
 
 function validateAndNavName() {
@@ -203,6 +211,9 @@ initChats();
 // Store original waiting screen HTML to restore on consecutive matches
 let originalWaitingHtml = "";
 window.addEventListener('DOMContentLoaded', () => {
+    // Initialize age vertical carousel
+    initAgePicker();
+
     const waitingScreen = document.getElementById('screen-waiting');
     if (waitingScreen) {
         originalWaitingHtml = waitingScreen.innerHTML;
@@ -216,6 +227,7 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 let realMatch = null;
+let realMatches = [];
 let pollIntervalId = null;
 let chatPollIntervalId = null;
 
@@ -465,46 +477,8 @@ function startPolling(token) {
     }, 2000); // Poll every 2 seconds
 }
 
-// Show Real Match UI
-function showRealMatch(matchData) {
-    const waitingScreen = document.getElementById('screen-waiting');
-    if (!waitingScreen) return;
-
-    const { name, emoji } = parsePeerHandle(matchData.peer_handle);
-    const scoreText = typeof matchData.score === 'number' ? `${Math.round(matchData.score)}%` : matchData.score;
-    const verdict = matchData.verdict || 'Match';
-    const connectionCode = matchData.connection_code || '';
-
-    // Save active real match data
-    realMatch = {
-        id: "real_match",
-        name: name,
-        avatar: emoji,
-        score: scoreText,
-        bio: `Verdict: ${verdict} | Connection Code: ${connectionCode}`,
-        initialMessage: `Hey! The Confidential AI matched us with ${scoreText} compatibility. Connection Code: ${connectionCode}`
-    };
-
-    // Update chats with the initial message
-    chats["real_match"] = [
-        { sender: 'received', text: realMatch.initialMessage }
-    ];
-
-    waitingScreen.innerHTML = `
-        <div class="content-wrapper" style="padding-bottom: 0; width: 100%;">
-            <h2 style="text-align: center; margin-bottom: 4px;">Match Found!</h2>
-            <p class="subtitle" style="text-align: center; margin-bottom: 24px;">The Confidential AI identified secure matches inside the TEE.</p>
-            
-            <div id="matches-list" style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
-                <!-- Match card is appended here -->
-            </div>
-        </div>
-        <div class="button-container" style="margin-top: 24px;">
-            <button class="btn-secondary" onclick="resetApp()">Change preferences</button>
-        </div>
-    `;
-
-    const matchesList = document.getElementById('matches-list');
+// Helper to create match cards
+function createMatchCard(match) {
     const card = document.createElement('div');
     card.className = 'match-card';
     card.style.cssText = `
@@ -531,44 +505,96 @@ function showRealMatch(matchData) {
         card.style.boxShadow = '0 2px 4px rgba(0,0,0,0.01)';
     };
     
-    card.onclick = () => openChatForMatch("real_match");
+    card.onclick = () => openChatForMatch(match.id);
     
     card.innerHTML = `
-        <div class="avatar-item selected" style="width: 56px; height: 56px; font-size: 2.2rem; margin: 0; cursor: pointer; flex-shrink: 0; background: #e0e7ff;">${emoji}</div>
+        <div class="avatar-item selected" style="width: 56px; height: 56px; font-size: 2.2rem; margin: 0; cursor: pointer; flex-shrink: 0; background: #e0e7ff;">${match.avatar}</div>
         <div style="flex: 1; min-width: 0;">
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
-                <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-main);">${name}</h3>
-                <span style="background: #e2f0fd; color: #1d4ed8; font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">${scoreText} Match</span>
+                <h3 style="font-size: 1.1rem; font-weight: 700; margin: 0; color: var(--text-main);">${match.name}</h3>
+                <span style="background: #e2f0fd; color: #1d4ed8; font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px;">${match.score} Match</span>
             </div>
-            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${realMatch.bio}</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${match.bio}</p>
         </div>
     `;
-    matchesList.appendChild(card);
+    return card;
+}
+
+// Show Real Match UI (renders both real matches and mock matches)
+function showRealMatch(matchData) {
+    const waitingScreen = document.getElementById('screen-waiting');
+    if (!waitingScreen) return;
+
+    realMatches = [];
+    if (matchData.matched && matchData.matches) {
+        matchData.matches.forEach(m => {
+            const { name, emoji } = parsePeerHandle(m.peer_handle);
+            const scoreText = typeof m.score === 'number' ? `${Math.round(m.score)}%` : m.score;
+            const verdict = m.verdict || 'Match';
+            const connectionCode = m.connection_code || '';
+            
+            const matchObj = {
+                id: `real_match_${connectionCode}`,
+                name: name,
+                avatar: emoji,
+                score: scoreText,
+                bio: `Verdict: ${verdict} | Connection Code: ${connectionCode}`,
+                initialMessage: `Hey! The Confidential AI matched us with ${scoreText} compatibility. Connection Code: ${connectionCode}`,
+                connection_code: connectionCode
+            };
+            realMatches.push(matchObj);
+            
+            // Initialize chat history for this real match if not already present
+            if (!chats[matchObj.id]) {
+                chats[matchObj.id] = [
+                    { sender: 'received', text: matchObj.initialMessage }
+                ];
+            }
+        });
+    }
+
+    waitingScreen.innerHTML = `
+        <button class="back-btn" onclick="nav('screen-story')">←</button>
+        <div class="content-wrapper" style="padding-bottom: 0; width: 100%;">
+            <h2 style="margin-bottom: 4px;">Matches Found!</h2>
+            <p class="subtitle" style="margin-bottom: 24px;">The Confidential AI identified secure matches inside the TEE.</p>
+            
+            <div id="matches-list" style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+                <!-- Match cards will be appended here -->
+            </div>
+        </div>
+        <div class="button-container" style="margin-top: 24px;">
+            <button class="btn-secondary" onclick="resetApp()">Change preferences</button>
+        </div>
+    `;
+
+    const matchesList = document.getElementById('matches-list');
+    
+    // Add real matches
+    realMatches.forEach(match => {
+        const card = createMatchCard(match);
+        matchesList.appendChild(card);
+    });
+
+    // Add mock matches
+    mockMatches.forEach(match => {
+        const card = createMatchCard(match);
+        matchesList.appendChild(card);
+    });
 }
 
 // Show No Match UI
 function showNoMatch() {
-    const waitingScreen = document.getElementById('screen-waiting');
-    if (!waitingScreen) return;
-    
-    waitingScreen.innerHTML = `
-        <div class="content-wrapper center-content" style="padding-bottom: 0; width: 100%;">
-            <span style="font-size: 4rem; margin-bottom: 16px; display: block;">😔</span>
-            <h2 style="text-align: center; margin-bottom: 8px;">No Matches This Round</h2>
-            <p class="subtitle" style="text-align: center; margin-bottom: 24px; max-width: 320px; margin-left: auto; margin-right: auto;">The Confidential AI ran the matching protocol inside the TEE but did not find any highly compatible matches this round.</p>
-        </div>
-        <div class="button-container" style="margin-top: 32px; display: flex; flex-direction: column; gap: 12px; width: 100%;">
-            <button class="btn-primary" onclick="startMatching()">Reload</button>
-            <button class="btn-secondary" onclick="resetApp()">Change preferences</button>
-        </div>
-    `;
+    // Deprecated in favor of showRealMatch which displays mock matches when no real matches exist.
+    showRealMatch({ matched: false, matches: [] });
 }
 
 function openChatForMatch(matchId) {
     activeMatchId = matchId;
     let match = mockMatches.find(m => m.id === matchId);
-    if (!match && matchId === 'real_match') {
-        match = realMatch;
+    if (!match && matchId.startsWith('real_match_')) {
+        const roomCode = matchId.replace('real_match_', '');
+        match = realMatches.find(m => m.connection_code === roomCode);
     }
     if (!match) return;
     
@@ -588,7 +614,7 @@ function openChatForMatch(matchId) {
     nav('screen-chat');
 
     // Start/Stop chat polling
-    if (matchId === 'real_match') {
+    if (matchId.startsWith('real_match_')) {
         startChatPolling();
     } else {
         stopChatPolling();
@@ -624,10 +650,11 @@ function sendMessage() {
     
     if (!text || !activeMatchId) return; // Ignore empty messages
     
-    if (activeMatchId === 'real_match') {
+    if (activeMatchId.startsWith('real_match_')) {
         const token = localStorage.getItem('kolosok_token');
         if (!token) return;
         
+        const roomCode = activeMatchId.replace('real_match_', '');
         const apiHost = window.location.hostname || 'localhost';
         
         fetch(`http://${apiHost}:8765/chat/send`, {
@@ -635,7 +662,7 @@ function sendMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ token: token, text: text })
+            body: JSON.stringify({ token: token, text: text, room_id: roomCode })
         })
         .then(response => {
             if (!response.ok) throw new Error("HTTP error: " + response.status);
@@ -643,8 +670,8 @@ function sendMessage() {
         })
         .then(data => {
             if (data.ok) {
-                const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}`;
-                syncChatMessages(pollUrl);
+                const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}&room_id=${encodeURIComponent(roomCode)}`;
+                syncChatMessages(pollUrl, activeMatchId);
             }
         })
         .catch(error => {
@@ -673,18 +700,21 @@ function startChatPolling() {
     const token = localStorage.getItem('kolosok_token');
     if (!token) return;
     
+    if (!activeMatchId || !activeMatchId.startsWith('real_match_')) return;
+    const roomCode = activeMatchId.replace('real_match_', '');
+    
     const apiHost = window.location.hostname || 'localhost';
-    const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}`;
+    const pollUrl = `http://${apiHost}:8765/chat/messages?token=${token}&room_id=${encodeURIComponent(roomCode)}`;
     
     // Immediate sync
-    syncChatMessages(pollUrl);
+    syncChatMessages(pollUrl, activeMatchId);
     
     chatPollIntervalId = setInterval(() => {
-        syncChatMessages(pollUrl);
+        syncChatMessages(pollUrl, activeMatchId);
     }, 1000);
 }
 
-function syncChatMessages(pollUrl) {
+function syncChatMessages(pollUrl, matchId) {
     fetch(pollUrl)
     .then(response => {
         if (!response.ok) throw new Error("HTTP status: " + response.status);
@@ -692,9 +722,26 @@ function syncChatMessages(pollUrl) {
     })
     .then(data => {
         if (data.ok && data.messages) {
-            chats["real_match"] = data.messages;
-            if (activeMatchId === 'real_match') {
-                renderMessages();
+            const oldMessages = chats[matchId] || [];
+            const newMessages = data.messages;
+            
+            // Compare new messages array with current one
+            let changed = oldMessages.length !== newMessages.length;
+            if (!changed && newMessages.length > 0) {
+                const oldLast = oldMessages[oldMessages.length - 1];
+                const newLast = newMessages[newMessages.length - 1];
+                if (oldLast.text !== newLast.text || oldLast.sender_token !== newLast.sender_token) {
+                    changed = true;
+                }
+            } else if (newMessages.length > 0) {
+                changed = true;
+            }
+            
+            if (changed) {
+                chats[matchId] = newMessages;
+                if (activeMatchId === matchId) {
+                    renderMessages();
+                }
             }
         }
     })
@@ -747,7 +794,10 @@ function restoreSession(token) {
                 const profileObj = JSON.parse(profileJson);
                 if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
                 if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
-                if (document.getElementById('my-age')) document.getElementById('my-age').value = profileObj.age || "";
+                if (document.getElementById('my-age')) {
+                    document.getElementById('my-age').value = profileObj.age || "18";
+                    setTimeout(() => setAgePickerValue(profileObj.age), 150);
+                }
                 if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
             }
             const avatarVal = localStorage.getItem('kolosok_avatar');
@@ -788,7 +838,10 @@ function restoreSession(token) {
                 const profileObj = JSON.parse(profileJson);
                 if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
                 if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
-                if (document.getElementById('my-age')) document.getElementById('my-age').value = profileObj.age || "";
+                if (document.getElementById('my-age')) {
+                    document.getElementById('my-age').value = profileObj.age || "18";
+                    setTimeout(() => setAgePickerValue(profileObj.age), 150);
+                }
                 if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
             }
             const avatarVal = localStorage.getItem('kolosok_avatar');
@@ -854,4 +907,91 @@ function debugReset() {
             window.location.reload();
         }, 1000);
     });
+}
+
+// Age Horizontal Carousel Selector
+function initAgePicker() {
+    const picker = document.getElementById('age-picker');
+    const ageInput = document.getElementById('my-age');
+    if (!picker || !ageInput) return;
+
+    picker.innerHTML = '';
+
+    // Add left padding element (1 slot)
+    const leftPadding = document.createElement('div');
+    leftPadding.className = 'age-padding';
+    picker.appendChild(leftPadding);
+
+    const minAge = 18;
+    const maxAge = 99;
+    const itemWidth = 60; // 60px width per item
+
+    for (let age = minAge; age <= maxAge; age++) {
+        const div = document.createElement('div');
+        div.className = 'age-item';
+        div.innerText = age;
+        div.setAttribute('data-age', age);
+        div.onclick = () => {
+            picker.scrollTo({
+                left: (age - minAge) * itemWidth,
+                behavior: 'smooth'
+            });
+        };
+        picker.appendChild(div);
+    }
+
+    // Add right padding element (1 slot)
+    const rightPadding = document.createElement('div');
+    rightPadding.className = 'age-padding';
+    picker.appendChild(rightPadding);
+
+    // Scroll listener
+    picker.onscroll = () => {
+        const scrollLeft = picker.scrollLeft;
+        const activeIndex = Math.round(scrollLeft / itemWidth);
+        const activeAge = minAge + activeIndex;
+        const finalAge = Math.min(Math.max(activeAge, minAge), maxAge);
+
+        picker.querySelectorAll('.age-item').forEach(el => {
+            const ageVal = parseInt(el.getAttribute('data-age'), 10);
+            if (ageVal === finalAge) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+        });
+
+        ageInput.value = finalAge;
+    };
+
+    // Initial positioning (default to 18)
+    setTimeout(() => {
+        setAgePickerValue(18);
+    }, 150);
+}
+
+function setAgePickerValue(age) {
+    const picker = document.getElementById('age-picker');
+    if (!picker) return;
+    const minAge = 18;
+    const maxAge = 99;
+    const itemWidth = 60;
+    const targetAge = Math.min(Math.max(parseInt(age, 10) || 18, minAge), maxAge);
+    
+    // Set input value
+    const ageInput = document.getElementById('my-age');
+    if (ageInput) ageInput.value = targetAge;
+    
+    // Highlight the selected age element directly
+    picker.querySelectorAll('.age-item').forEach(el => {
+        const val = parseInt(el.getAttribute('data-age'), 10);
+        if (val === targetAge) {
+            el.classList.add('selected');
+        } else {
+            el.classList.remove('selected');
+        }
+    });
+    
+    // Scroll to position
+    picker.scrollLeft = (targetAge - minAge) * itemWidth;
 }

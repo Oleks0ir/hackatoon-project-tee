@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Kolosok - Confidential Dating</title>
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,600;0,700;1,400&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#4f46e5">
+    <title>DayTEE - Confidential Dating</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="apple-touch-icon" href="daytee_logo.png">
     <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -16,27 +18,28 @@
     </div>
 
     <main id="app-container">
-        
         <section id="screen-welcome" class="screen active">
-            <div class="content-wrapper center-content">
-                <img src="golden_kolosok.jpg" alt="Kolosok Logo" style="width: 130px; height: 130px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent-gold); box-shadow: 0 8px 24px rgba(229, 169, 59, 0.15); margin-bottom: 24px; padding: 12px; background: white;">
-                <h1>Kolosok</h1>
-                <p class="subtitle" style="font-weight: 600; text-transform: uppercase; font-size: 0.85rem; letter-spacing: 1.5px; color: var(--primary); margin-bottom: 30px;">Confidential AI Matchmaking</p>
-                
-                <div style="display: flex; flex-direction: column; gap: 16px; text-align: left; width: 100%; max-width: 320px; font-size: 0.95rem; margin-bottom: 20px;">
-                    <div style="display: flex; gap: 12px; align-items: flex-start;">
-                        <span style="font-size: 1.4rem; line-height: 1;">🔒</span>
-                        <span style="color: var(--text-main);"><strong>TEE hardware enclaves</strong> keep your details 100% hidden.</span>
-                    </div>
-                    <div style="display: flex; gap: 12px; align-items: flex-start;">
-                        <span style="font-size: 1.4rem; line-height: 1;">🧠</span>
-                        <span style="color: var(--text-main);"><strong>Confidential AI</strong> matches your true life story, not photos.</span>
-                    </div>
-                    <div style="display: flex; gap: 12px; align-items: flex-start;">
-                        <span style="font-size: 1.4rem; line-height: 1;">🚫</span>
-                        <span style="color: var(--text-main);"><strong>No public directory</strong> or swiping. Only secure, verified matches.</span>
+            <div class="content-wrapper center-content" style="justify-content: space-between; padding-top: 10px; padding-bottom: 20px;">
+                <!-- Brand publisher credit at top -->
+                <div class="team-brand" style="display: flex; align-items: center; gap: 6px; opacity: 0.75; margin-top: -5px;">
+                    <img src="kolosok_vector.png" alt="Kolosok Logo" style="width: 40px; height: 40px; object-fit: contain;">
+                    <span style="font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.15rem; color: var(--text-main); text-transform: uppercase; letter-spacing: 2.5px;">Kolosok</span>
+                </div>
+
+                <!-- Grouped logo, title, and tagline to keep spacing tight -->
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; margin-bottom: 10px;">
+                    <!-- Main logo emblem -->
+                    <img src="daytee_logo.png" alt="DayTEE Logo" style="width: 140px; height: 140px; object-fit: contain; animation: float 3s ease-in-out infinite;">
+
+                    <!-- App title and tagline grouping -->
+                    <div style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                        <h1 style="font-size: 3.5rem; margin-bottom: 8px; line-height: 1; letter-spacing: -0.5px;">DayTEE</h1>
+                        <p class="subtitle" style="font-weight: 500; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0; max-width: 260px; line-height: 1.45;">Confidential Matchmaking in Secure Enclaves</p>
                     </div>
                 </div>
+
+                <!-- Spacer to balance layout distribution -->
+                <div></div>
             </div>
             <div class="button-container">
                 <button class="btn-primary" onclick="nav('screen-info-1')">Get Started</button>
@@ -44,6 +47,7 @@
         </section>
 
         <section id="screen-info-1" class="screen">
+            <button class="back-btn" onclick="nav('screen-welcome')">←</button>
             <div class="content-wrapper">
                 <h2>The Privacy Shield: TEEs</h2>
                 <p class="subtitle">Your life story, locked in silicon.</p>
@@ -67,6 +71,7 @@
         </section>
 
         <section id="screen-info-2" class="screen">
+            <button class="back-btn" onclick="nav('screen-info-1')">←</button>
             <div class="content-wrapper">
                 <h2>Confidential Matchmaking</h2>
                 <p class="subtitle">Zero-knowledge AI matchmaking.</p>
@@ -90,6 +95,7 @@
         </section>
 
         <section id="screen-name" class="screen">
+            <button class="back-btn" onclick="nav('screen-info-2')">←</button>
             <div class="content-wrapper">
                 <h2>Who are you?</h2>
                 <p class="subtitle">What should we call you?</p>
@@ -102,8 +108,14 @@
                     <input type="text" id="lname" placeholder="Your last name">
                 </div>
                 <div class="input-group">
-                    <label for="my-age">Your Age</label>
-                    <input type="number" id="my-age" min="18" max="99" placeholder="Enter your age">
+                    <label>Your Age</label>
+                    <div class="age-carousel-wrapper">
+                        <div class="age-selection-overlay"></div>
+                        <div class="age-picker-container" id="age-picker">
+                            <!-- Programmatically generated list of ages -->
+                        </div>
+                    </div>
+                    <input type="hidden" id="my-age" value="18">
                 </div>
             </div>
             <div class="button-container">
@@ -112,6 +124,7 @@
         </section>
 
         <section id="screen-avatar" class="screen">
+            <button class="back-btn" onclick="nav('screen-name')">←</button>
             <div class="content-wrapper">
                 <h2>Your Avatar</h2>
                 <p class="subtitle">Choose an identity for your profile.</p>
@@ -124,6 +137,7 @@
         </section>
 
         <section id="screen-demographics" class="screen">
+            <button class="back-btn" onclick="nav('screen-avatar')">←</button>
             <div class="content-wrapper">
                 <h2>Who are you looking for?</h2>
                 <p class="subtitle">Set your preferences.</p>
@@ -167,6 +181,7 @@
         </section>
 
         <section id="screen-story" class="screen">
+            <button class="back-btn" onclick="nav('screen-demographics')">←</button>
             <div class="content-wrapper">
                 <h2>Your Story</h2>
                 <p class="subtitle">Tell us everything about yourself. The Confidential AI does the rest.</p>
@@ -212,61 +227,126 @@
         </div>
         <div class="modal-content">
             <h4>Europe</h4>
+            
+            <div class="lang-family-subtitle">Germanic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">German</button>
                 <button class="lang-chip" onclick="toggleLang(this)">English</button>
+                <button class="lang-chip" onclick="toggleLang(this)">German</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Dutch</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Swedish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Norwegian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Danish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Icelandic</button>
+            </div>
+
+            <div class="lang-family-subtitle">Romance</div>
+            <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Spanish</button>
                 <button class="lang-chip" onclick="toggleLang(this)">French</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Italian</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Portuguese</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Dutch</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Polish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Russian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Ukrainian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Swedish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Norwegian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Danish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Finnish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Greek</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Czech</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Romanian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hungarian</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Catalan</button>
             </div>
+
+            <div class="lang-family-subtitle">Slavic</div>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Russian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Polish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Ukrainian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Czech</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Slovak</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Bulgarian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Croatian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Serbian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Slovenian</button>
+            </div>
+
+            <div class="lang-family-subtitle">Baltic</div>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Lithuanian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Latvian</button>
+            </div>
+
+            <div class="lang-family-subtitle">Uralic</div>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Finnish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hungarian</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Estonian</button>
+            </div>
+
+            <div class="lang-family-subtitle">Other European</div>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Greek</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Irish</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Welsh</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Basque</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Albanian</button>
+            </div>
+
             <h4>Asia</h4>
+            
+            <div class="lang-family-subtitle">Sino-Tibetan, Japonic & Koreanic</div>
             <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Mandarin</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Cantonese</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Japanese</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Korean</button>
+            </div>
+
+            <div class="lang-family-subtitle">Indo-Aryan & Iranian</div>
+            <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Hindi</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Urdu</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Bengali</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Punjabi</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Urdu</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Persian (Farsi)</button>
+            </div>
+
+            <div class="lang-family-subtitle">Dravidian</div>
+            <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Tamil</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Telugu</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Kannada</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Malayalam</button>
+            </div>
+
+            <div class="lang-family-subtitle">Austroasiatic, Tai-Kadai & Austronesian</div>
+            <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Vietnamese</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Thai</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Indonesian</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Malay</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Tagalog</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Turkish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hebrew</button>
             </div>
+
+            <div class="lang-family-subtitle">Turkic</div>
+            <div class="lang-chips">
+                <button class="lang-chip" onclick="toggleLang(this)">Turkish</button>
+            </div>
+
             <h4>Africa & Middle East</h4>
+            
+            <div class="lang-family-subtitle">Semitic & Cushitic (Afroasiatic)</div>
             <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Arabic</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Persian (Farsi)</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Hebrew</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Amharic</button>
+                <button class="lang-chip" onclick="toggleLang(this)">Somali</button>
+            </div>
+
+            <div class="lang-family-subtitle">Niger-Congo & Germanic</div>
+            <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Swahili</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hausa</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Yoruba</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Igbo</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Zulu</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Afrikaans</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Amharic</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Somali</button>
             </div>
+
             <h4>Americas & Oceania</h4>
+            
+            <div class="lang-family-subtitle">Indigenous American & Austronesian</div>
             <div class="lang-chips">
                 <button class="lang-chip" onclick="toggleLang(this)">Quechua</button>
                 <button class="lang-chip" onclick="toggleLang(this)">Guarani</button>

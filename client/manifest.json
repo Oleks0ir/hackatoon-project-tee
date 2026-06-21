@@ -1,17 +1,19 @@
 {
-  "name": "Kolosok Confidential Dating",
-  "short_name": "Kolosok",
+  "name": "DayTEE Confidential Dating",
+  "short_name": "DayTEE",
   "description": "Confidential AI Matchmaking in secure hardware enclaves.",
+  "id": "/daytee",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#1e1b4b",
   "theme_color": "#4f46e5",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "daytee_logo.png",
+      "sizes": "256x256",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

@@ -14,39 +14,6 @@
 
 ---
 
-## 🏗️ Architecture Overview
-
-The system consists of three independent components:
-
-```mermaid
-graph TD
-    Client[Progressive Web App - Port 3000] <-->|1. Handshake & Attestation| Handshake[Attestation Server - Port 8000]
-    Client <-->|2. Encrypted Story & Preferences| EnclaveAPI[Matchmaking Server - Port 8765]
-    EnclaveAPI <-->|3. Zero-Knowledge Match Calc| Model[Dating Matcher Engine]
-    EnclaveAPI <-->|4. Secure Routing Chat Rooms| Client
-```
-
-### 1. Attestation Handshake Server (`main.py`)
-Runs on the enclave system to bootstrap trust:
-- Generates static asymmetric project keypairs (`private_key.pem`, `public_key.pem`).
-- Exposes a `/handshake` endpoint providing the public key and a raw hardware **Remote Attestation Quote** (fetched from the local `tappd` dstack daemon inside the Intel TDX enclave).
-- Allows clients to verify that the server is genuine hardware and running unmodified, open-source code before submitting data.
-
-### 2. Matchmaking Backend Enclave (`server/app.py`)
-An API server running inside the enclave managing matches and communication:
-- Handles profile and preferences submissions.
-- **Confidential AI Matcher (`server/dating_matching_ai.py`)**: Computes semantic compatibility scores between user stories using advanced NLP (Sentence-Transformers / lightweight fallback) without exposing raw details.
-- **Anti-Phishing Shield**: Rate-limits requests and applies fuzzed score verification thresholds to prevent adversarial users from gaming the enclave to reconstruct other users' parameters.
-- **Room Key Router**: Sets up secure chat rooms utilizing keys generated inside the enclave.
-
-### 3. PWA Frontend (`client/`)
-An installable client application:
-- Includes a custom-built, responsive **Horizontal Age Selector Carousel** starting from 18, utilizing programmatic snapping.
-- **Languages Custom Dialog**: Organized by linguistic family grouping to search and toggle preferences.
-- **PWA Service Worker Caching (`sw.js`)**: Caches static assets for offline capability and fast load times.
-
----
-
 ## 🚀 Setup & Execution
 
 ### Prerequisites

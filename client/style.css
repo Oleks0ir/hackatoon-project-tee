@@ -108,6 +108,7 @@ body {
     flex-direction: column;
     padding: 30px 24px;
     animation: fadeIn 0.3s ease-in-out;
+    position: relative; /* Ensure absolute children position relative to the screen */
 }
 
 .screen.active {
@@ -120,8 +121,8 @@ body {
 }
 
 /* Typography */
-h1 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 2.8rem; margin-bottom: 8px; color: var(--primary); text-transform: uppercase; letter-spacing: 1px; }
-h2 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 700; font-size: 1.85rem; margin-bottom: 6px; }
+h1 { font-family: 'Outfit', sans-serif; font-weight: 500; font-size: 2.8rem; margin-bottom: 8px; color: var(--primary); letter-spacing: 1.5px; }
+h2 { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.85rem; margin-bottom: 6px; color: var(--text-main); }
 .subtitle { color: var(--text-muted); font-size: 1rem; margin-bottom: 24px; }
 p { line-height: 1.5; margin-bottom: 16px; }
 .info-text { font-size: 0.9rem; color: var(--text-muted); }
@@ -164,10 +165,20 @@ dialog::backdrop { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
 .modal-header button { width: auto; padding: 8px; background: none; color: var(--text-muted); font-size: 1.2rem; }
 .modal-content { padding: 20px; max-height: 50vh; overflow-y: auto; }
-.modal-content h4 { margin: 16px 0 8px 0; color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.modal-content h4 {
+    margin: 32px 0 10px 0;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.modal-content h4:first-of-type {
+    margin-top: 8px;
+}
 .modal-footer { padding: 16px 20px; border-top: 1px solid #e2e8f0; }
 
-.lang-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lang-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
 .lang-chip { width: auto; padding: 8px 16px; border-radius: 20px; background: var(--bg-color); border: 1px solid #cbd5e1; font-size: 0.9rem; font-weight: 500; }
 .lang-chip.active { background: var(--primary); color: white; border-color: var(--primary); }
 
@@ -345,4 +356,141 @@ dialog::backdrop { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
 
 .range-slider input[type="range"]::-moz-range-thumb:active {
     transform: scale(0.95);
-}
+}
+
+/* Age Selector Horizontal Carousel */
+.age-carousel-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 240px; /* Wider wrapper to show faded adjacent ages */
+    margin: 15px auto 5px auto;
+    height: 70px;
+    overflow: hidden;
+    background: none;
+    border: none;
+}
+
+.age-selection-overlay {
+    position: absolute;
+    top: 0;
+    left: 90px; /* Centered selection area (half of 240 minus half of 60) */
+    width: 60px;
+    height: 70px;
+    background: none;
+    border: none;
+    pointer-events: none; /* Let scrolls pass through */
+    z-index: 5;
+}
+
+.age-picker-container {
+    height: 100%;
+    display: flex;
+    flex-direction: row; /* Horizontal layout */
+    overflow-x: scroll;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none;  /* IE 10+ */
+    padding: 0;
+    margin: 0;
+    /* Soft horizontal fade at sides - wider visible area, very gradual edge decay */
+    mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.7) 8%, black 30%, black 70%, rgba(0, 0, 0, 0.7) 92%, transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.7) 8%, black 30%, black 70%, rgba(0, 0, 0, 0.7) 92%, transparent 100%);
+}
+
+.age-picker-container::-webkit-scrollbar {
+    display: none; /* Safari and Chrome */
+}
+
+.age-item {
+    width: 60px;
+    min-width: 60px;
+    height: 70px;
+    line-height: 70px;
+    text-align: center;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 0.65; /* Slightly translucent, letting the mask-image control the horizontal decay */
+    scroll-snap-align: center;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.age-item.selected {
+    font-size: 2.3rem; /* Magnified */
+    color: var(--primary);
+    font-weight: 700;
+    opacity: 1; /* Fully opaque when selected */
+    transform: scale(1.15);
+}
+
+.age-padding {
+    width: 90px; /* Half of wrapper (240px / 2) minus half of item (60px / 2) */
+    min-width: 90px;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* Premium Back Button */
+.back-btn {
+    position: absolute;
+    top: -54px;
+    left: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    user-select: none;
+    outline: none;
+}
+
+.lang-family-subtitle {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 18px;
+    margin-bottom: 10px;
+    line-height: 1.2;
+}
+
+h4 + .lang-family-subtitle {
+    margin-top: 8px;
+}
+
+.back-btn:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+    transform: scale(1.05) translateY(-1px);
+    box-shadow: 0 6px 16px rgba(200, 16, 46, 0.2);
+}
+
+.back-btn:active {
+    transform: scale(0.95);
+}
+
+/* Subtle float animation for splash app icon */
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-8px); }
+    100% { transform: translateY(0px); }
+}

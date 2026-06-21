@@ -115,13 +115,38 @@ def _age_ok(a: Profile, b: Profile) -> bool:
 
 
 @dataclass
+class Match:
+    peer_handle: str
+    connection_code: str
+    score: float
+    verdict: str
+    reasons: list[str]
+
+
+@dataclass
 class MatchResult:
     matched: bool
-    peer_handle: str | None = None
-    connection_code: str | None = None
-    score: float | None = None
-    verdict: str | None = None
-    reasons: list[str] = field(default_factory=list)
+    matches: list[Match] = field(default_factory=list)
+
+    @property
+    def peer_handle(self) -> str | None:
+        return self.matches[0].peer_handle if self.matches else None
+
+    @property
+    def connection_code(self) -> str | None:
+        return self.matches[0].connection_code if self.matches else None
+
+    @property
+    def score(self) -> float | None:
+        return self.matches[0].score if self.matches else None
+
+    @property
+    def verdict(self) -> str | None:
+        return self.matches[0].verdict if self.matches else None
+
+    @property
+    def reasons(self) -> list[str]:
+        return self.matches[0].reasons if self.matches else []
 
 
 @dataclass
@@ -288,25 +313,34 @@ class MatchEngine:
                     (score, a_uid, b_uid, verdict, res.get("reasons", []))
                 )
 
-        # 3. greedy global assignment: best AI score first, one partner each.
+        # 3. assignment: all pairs passing the AI threshold are matched, allowing multiple matches per user.
         scored.sort(reverse=True, key=lambda t: t[0])
-        used: set[str] = set()
         pairs = 0
         for token in self._profiles:
-            self._results[token] = MatchResult(matched=False)
+            self._results[token] = MatchResult(matched=False, matches=[])
         for score, a_uid, b_uid, verdict, reasons in scored:
-            if a_uid in used or b_uid in used:
-                logger.info(f"[ENGINE] Skipping pair {by_uid[a_uid].handle} <-> {by_uid[b_uid].handle} because one/both are already matched.")
-                continue
-            used.update((a_uid, b_uid))
             a, b = by_uid[a_uid], by_uid[b_uid]
-            code = "code #" + secrets.token_hex(2)
-            self._results[a.token] = MatchResult(
-                True, b.handle, code, score, verdict, reasons
-            )
-            self._results[b.token] = MatchResult(
-                True, a.handle, code, score, verdict, reasons
-            )
+            code = "code-" + secrets.token_hex(2)
+            
+            # Add match to a's result
+            self._results[a.token].matched = True
+            self._results[a.token].matches.append(Match(
+                peer_handle=b.handle,
+                connection_code=code,
+                score=score,
+                verdict=verdict,
+                reasons=reasons
+            ))
+            
+            # Add match to b's result
+            self._results[b.token].matched = True
+            self._results[b.token].matches.append(Match(
+                peer_handle=a.handle,
+                connection_code=code,
+                score=score,
+                verdict=verdict,
+                reasons=reasons
+            ))
             pairs += 1
             logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
 
@@ -316,7 +350,7 @@ class MatchEngine:
             "candidate_pairs": len(shortlist),
             "ai_calls": len(shortlist),
             "pairs": pairs,
-            "unmatched": len(profiles) - 2 * pairs,
+            "unmatched": sum(1 for res in self._results.values() if not res.matched),
         }
         logger.info(f"[ENGINE] Match round completed. Summary: {summary}")
         self._save_db()
@@ -349,14 +383,20 @@ class MatchEngine:
             "round_done": self._round_done,
         }
 
-    def send_message(self, token: str, text: str) -> bool:
+    def send_message(self, token: str, text: str, room_id: Optional[str] = None) -> bool:
         profile = self._profiles.get(token)
         if not profile:
             raise ValueError("unknown token")
         res = self._results.get(token)
         if not res or not res.matched:
             raise ValueError("user is not matched")
-        room_id = res.connection_code
+        if not room_id:
+            if hasattr(res, "matches") and res.matches:
+                room_id = res.matches[0].connection_code
+            else:
+                room_id = getattr(res, "connection_code", None)
+        if not room_id:
+            raise ValueError("no room found")
         self._chat_rooms.setdefault(room_id, [])
         msg = ChatMessage(
             sender_token=token,
@@ -369,14 +409,20 @@ class MatchEngine:
         self._save_db()
         return True
 
-    def get_messages(self, token: str) -> list[dict]:
+    def get_messages(self, token: str, room_id: Optional[str] = None) -> list[dict]:
         profile = self._profiles.get(token)
         if not profile:
             return []
         res = self._results.get(token)
         if not res or not res.matched:
             return []
-        room_id = res.connection_code
+        if not room_id:
+            if hasattr(res, "matches") and res.matches:
+                room_id = res.matches[0].connection_code
+            else:
+                room_id = getattr(res, "connection_code", None)
+        if not room_id:
+            return []
         messages = self._chat_rooms.get(room_id, [])
         return [
             {
@@ -416,11 +462,16 @@ class MatchEngine:
             for token, res in self._results.items():
                 data["results"][token] = {
                     "matched": res.matched,
-                    "peer_handle": res.peer_handle,
-                    "connection_code": res.connection_code,
-                    "score": res.score,
-                    "verdict": res.verdict,
-                    "reasons": res.reasons
+                    "matches": [
+                        {
+                            "peer_handle": m.peer_handle,
+                            "connection_code": m.connection_code,
+                            "score": m.score,
+                            "verdict": m.verdict,
+                            "reasons": m.reasons
+                        }
+                        for m in getattr(res, "matches", [])
+                    ]
                 }
             for room_id, messages in self._chat_rooms.items():
                 data["chat_rooms"][room_id] = [
@@ -467,14 +518,35 @@ class MatchEngine:
                     vector=np.array(p_data["vector"], dtype=np.float32)
                 )
             for token, res_data in data.get("results", {}).items():
-                self._results[token] = MatchResult(
-                    matched=res_data["matched"],
-                    peer_handle=res_data["peer_handle"],
-                    connection_code=res_data["connection_code"],
-                    score=res_data["score"],
-                    verdict=res_data["verdict"],
-                    reasons=res_data["reasons"]
-                )
+                if "matches" in res_data:
+                    matches = [
+                        Match(
+                            peer_handle=m["peer_handle"],
+                            connection_code=m["connection_code"],
+                            score=m["score"],
+                            verdict=m["verdict"],
+                            reasons=m["reasons"]
+                        )
+                        for m in res_data["matches"]
+                    ]
+                    self._results[token] = MatchResult(
+                        matched=res_data["matched"],
+                        matches=matches
+                    )
+                else:
+                    matches = []
+                    if res_data.get("matched"):
+                        matches.append(Match(
+                            peer_handle=res_data.get("peer_handle", ""),
+                            connection_code=res_data.get("connection_code", ""),
+                            score=res_data.get("score", 0.0),
+                            verdict=res_data.get("verdict", ""),
+                            reasons=res_data.get("reasons", [])
+                        ))
+                    self._results[token] = MatchResult(
+                        matched=res_data.get("matched", False),
+                        matches=matches
+                    )
             for room_id, msgs_data in data.get("chat_rooms", {}).items():
                 self._chat_rooms[room_id] = [
                     ChatMessage(
@@ -541,6 +613,7 @@ try:
     class ChatSendPayload(BaseModel):
         token: str
         text: str
+        room_id: Optional[str] = None
 
     app = FastAPI(title="Matching server (prototype_no_keys)")
 
@@ -576,15 +649,15 @@ try:
     @app.post("/chat/send")
     def chat_send(payload: ChatSendPayload):
         try:
-            ENGINE.send_message(payload.token, payload.text)
+            ENGINE.send_message(payload.token, payload.text, payload.room_id)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True}
 
     @app.get("/chat/messages")
-    def chat_messages(token: str):
+    def chat_messages(token: str, room_id: Optional[str] = None):
         try:
-            messages = ENGINE.get_messages(token)
+            messages = ENGINE.get_messages(token, room_id)
         except ValueError as exc:
             raise HTTPException(400, str(exc))
         return {"ok": True, "messages": messages}
@@ -602,6 +675,16 @@ try:
             "score": res.score,
             "verdict": res.verdict,
             "reasons": res.reasons,
+            "matches": [
+                {
+                    "peer_handle": m.peer_handle,
+                    "connection_code": m.connection_code,
+                    "score": m.score,
+                    "verdict": m.verdict,
+                    "reasons": m.reasons,
+                }
+                for m in res.matches
+            ]
         }
 
     @app.get("/stats")
@@ -658,20 +741,27 @@ try:
             
             # Match Status Badge
             if res and res.matched:
-                status_badge = f'<span class="badge matched">Matched with {res.peer_handle} ({res.score:.0f}%)</span>'
-                reasons_li = "".join(f"<li>{r}</li>" for r in res.reasons)
+                matches_li = ""
+                for m in res.matches:
+                    reasons_li = "".join(f"<li>{r}</li>" for r in m.reasons)
+                    matches_li += f"""
+                    <div class="match-item" style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px;">
+                        <div class="info-row"><strong>Partner:</strong> {m.peer_handle}</div>
+                        <div class="info-row"><strong>Match Score:</strong> {m.score:.1f}%</div>
+                        <div class="info-row"><strong>Connection Code:</strong> <span class="code">{m.connection_code}</span></div>
+                        <div class="info-row"><strong>Verdict:</strong> {m.verdict}</div>
+                        <div class="info-row">
+                            <strong>Matching Reasons:</strong>
+                            <ul class="reasons-list">
+                                {reasons_li}
+                            </ul>
+                        </div>
+                    </div>
+                    """
+                status_badge = f'<span class="badge matched">{len(res.matches)} Matches</span>'
                 match_details = f"""
                 <div class="match-info">
-                    <div class="info-row"><strong>Partner:</strong> {res.peer_handle}</div>
-                    <div class="info-row"><strong>Match Score:</strong> {res.score:.1f}%</div>
-                    <div class="info-row"><strong>Connection Code:</strong> <span class="code">{res.connection_code}</span></div>
-                    <div class="info-row"><strong>Verdict:</strong> {res.verdict}</div>
-                    <div class="info-row">
-                        <strong>Matching Reasons:</strong>
-                        <ul class="reasons-list">
-                            {reasons_li}
-                        </ul>
-                    </div>
+                    {matches_li}
                 </div>
                 """
             else:
