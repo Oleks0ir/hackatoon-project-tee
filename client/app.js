@@ -58,6 +58,14 @@ function nav(screenId) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.getElementById(screenId).classList.add('active');
     
+    // Stop match polling if navigating back to user setup screens
+    if (['screen-name', 'screen-avatar', 'screen-demographics', 'screen-story'].includes(screenId)) {
+        if (pollIntervalId) {
+            clearInterval(pollIntervalId);
+            pollIntervalId = null;
+        }
+    }
+    
     if (screenId === 'screen-name') {
         const ageInput = document.getElementById('my-age');
         const currentAge = ageInput ? ageInput.value : 18;
@@ -651,20 +659,26 @@ function startPolling(token) {
         .then(data => {
             console.log("Poll result:", data);
             if (data.round_done) {
-                clearInterval(pollIntervalId);
-                pollIntervalId = null;
-                
                 if (data.matched) {
+                    clearInterval(pollIntervalId);
+                    pollIntervalId = null;
                     showRealMatch(data);
                 } else {
-                    showNoMatch();
+                    // Check if we are already displaying the "No Matches Found" screen to avoid layout flashing
+                    const waitingScreen = document.getElementById('screen-waiting');
+                    const matchesList = document.getElementById('matches-list');
+                    const isNoMatchesScreen = waitingScreen && matchesList && waitingScreen.querySelector('h2') && waitingScreen.querySelector('h2').innerText.includes("No Matches Found");
+                    
+                    if (!isNoMatchesScreen) {
+                        showNoMatch();
+                    }
                 }
             }
         })
         .catch(error => {
             console.error("Error polling result enclave:", error);
         });
-    }, 2000); // Poll every 2 seconds
+    }, 5000); // Poll every 5 seconds
 }
 
 // Helper to create match cards
@@ -754,11 +768,27 @@ function showRealMatch(matchData) {
         });
     }
 
+    // Helper to get numeric score for sorting
+    const getNumericScore = (scoreStr) => {
+        if (typeof scoreStr === 'number') return scoreStr;
+        const clean = String(scoreStr || '').replace('%', '').trim();
+        const parsed = parseFloat(clean);
+        return isNaN(parsed) ? 0 : parsed;
+    };
+
+    const combined = [...realMatches];
+    // Sort descending by score
+    combined.sort((a, b) => getNumericScore(b.score) - getNumericScore(a.score));
+    
+    // Take only the top 3
+    const top3 = combined.slice(0, 3);
+    const hasMatches = combined.length > 0;
+
     waitingScreen.innerHTML = `
         <button class="back-btn" onclick="nav('screen-story')">←</button>
         <div class="content-wrapper" style="padding-bottom: 0; width: 100%;">
-            <h2 style="margin-bottom: 4px;">Matches Found!</h2>
-            <p class="subtitle" style="margin-bottom: 24px;">The Confidential AI identified secure matches inside the TEE.</p>
+            <h2 style="margin-bottom: 4px;">${hasMatches ? "Matches Found!" : "No Matches Found"}</h2>
+            <p class="subtitle" style="margin-bottom: 24px;">${hasMatches ? "The Confidential AI identified secure matches inside the TEE." : "The secure matchmaking algorithm didn't find compatible profiles in this round."}</p>
             
             <div id="matches-list" style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
                 <!-- Match cards will be appended here -->
@@ -770,24 +800,8 @@ function showRealMatch(matchData) {
     `;
 
     const matchesList = document.getElementById('matches-list');
-    
-    // Helper to get numeric score for sorting
-    function getNumericScore(scoreStr) {
-        if (typeof scoreStr === 'number') return scoreStr;
-        const clean = String(scoreStr || '').replace('%', '').trim();
-        const parsed = parseFloat(clean);
-        return isNaN(parsed) ? 0 : parsed;
-    }
 
-    // Combine real matches and mock matches
-    const combined = [...realMatches];
-    // Sort descending by score
-    combined.sort((a, b) => getNumericScore(b.score) - getNumericScore(a.score));
-    
-    // Take only the top 3
-    const top3 = combined.slice(0, 3);
-
-    if (combined.length === 0) {
+    if (!hasMatches) {
         matchesList.innerHTML = `
             <div style="text-align: center; padding: 40px 20px; border: 1px dashed var(--border); border-radius: 16px; background: rgba(255,255,255,0.02); margin-top: 16px;">
                 <div style="font-size: 3rem; margin-bottom: 16px;">💔</div>
@@ -795,10 +809,6 @@ function showRealMatch(matchData) {
                 <p style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.4; max-width: 280px; margin: 0 auto;">Try adjusting your preferences or life story to find compatible partners.</p>
             </div>
         `;
-        const titleH2 = waitingScreen.querySelector('h2');
-        if (titleH2) titleH2.innerText = "No Matches Found";
-        const subtitleP = waitingScreen.querySelector('.subtitle');
-        if (subtitleP) subtitleP.innerText = "The secure matchmaking algorithm didn't find compatible profiles in this round.";
     } else {
         // Render top 3 matches
         top3.forEach(match => {
@@ -1098,6 +1108,7 @@ function restoreSession(token) {
             } else {
                 showNoMatch();
                 nav('screen-waiting');
+                startPolling(token); // Keep polling in the background!
             }
         } else {
             // Still waiting for round completion, resume polling
