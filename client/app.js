@@ -2,7 +2,21 @@
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('[PWA] Service worker registered successfully', reg))
+            .then(reg => {
+                console.log('[PWA] Service worker registered successfully', reg);
+                // Handle messages from service worker (notification clicks)
+                navigator.serviceWorker.addEventListener('message', (event) => {
+                    if (event.data && event.data.type === 'NOTIFICATION_CLICK') {
+                        const { matchId, isMatch } = event.data;
+                        window.focus();
+                        if (isMatch) {
+                            nav('screen-waiting');
+                        } else if (matchId) {
+                            openChatForMatch(matchId);
+                        }
+                    }
+                });
+            })
             .catch(err => console.error('[PWA] Service worker registration failed', err));
     });
 }
@@ -382,12 +396,36 @@ window.addEventListener('DOMContentLoaded', () => {
         originalWaitingHtml = waitingScreen.innerHTML;
     }
     
-    // Attempt to restore existing session
-    const savedToken = localStorage.getItem('kolosok_token');
-    if (savedToken) {
-        restoreSession(savedToken);
+    // Check URL parameters for notification click routing
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('notification') === 'true') {
+        const isMatch = urlParams.get('isMatch') === 'true';
+        const matchId = urlParams.get('matchId');
+        if (isMatch) {
+            const savedToken = localStorage.getItem('kolosok_token');
+            if (savedToken) {
+                restoreSession(savedToken);
+            } else {
+                nav('screen-waiting');
+            }
+        } else if (matchId) {
+            const savedToken = localStorage.getItem('kolosok_token');
+            if (savedToken) {
+                restoreSession(savedToken);
+                setTimeout(() => {
+                    openChatForMatch(matchId);
+                }, 300);
+            }
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
     } else {
-        restoreProfileFromLocalStorage();
+        // Attempt to restore existing session
+        const savedToken = localStorage.getItem('kolosok_token');
+        if (savedToken) {
+            restoreSession(savedToken);
+        } else {
+            restoreProfileFromLocalStorage();
+        }
     }
     
     // Request notification permission
@@ -662,6 +700,7 @@ function startPolling(token) {
                 if (data.matched) {
                     clearInterval(pollIntervalId);
                     pollIntervalId = null;
+                    showWebNotification("New Match Found! 🎉", "The secure matchmaking algorithm found a match inside the TEE.", "matches-list", true);
                     showRealMatch(data);
                 } else {
                     // Check if we are already displaying the "No Matches Found" screen to avoid layout flashing
@@ -1235,20 +1274,54 @@ function requestNotificationPermission() {
     }
 }
 
-function showWebNotification(title, body, matchId) {
-    if (activeMatchId === matchId && document.getElementById('screen-chat').classList.contains('active') && !document.hidden) {
+function showWebNotification(title, body, matchId, isMatch = false) {
+    if (!isMatch && activeMatchId === matchId && document.getElementById('screen-chat').classList.contains('active') && !document.hidden) {
         return; // Don't notify if user is already viewing the chat
     }
     
     if ('Notification' in window && Notification.permission === 'granted') {
-        const notification = new Notification(title, {
+        const options = {
             body: body,
-            icon: './daytee_logo.png'
-        });
-        notification.onclick = () => {
-            window.focus();
-            openChatForMatch(matchId);
+            icon: './daytee_logo.png',
+            tag: isMatch ? 'new-match' : `chat-${matchId}`,
+            renotify: true,
+            data: { matchId: matchId, isMatch: isMatch }
         };
+        
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.ready.then(registration => {
+                registration.showNotification(title, options);
+            }).catch(err => {
+                console.error("Service worker notification failed, trying fallback:", err);
+                try {
+                    const notification = new Notification(title, options);
+                    notification.onclick = () => {
+                        window.focus();
+                        if (isMatch) {
+                            nav('screen-waiting');
+                        } else if (matchId) {
+                            openChatForMatch(matchId);
+                        }
+                    };
+                } catch (e) {
+                    console.error("Standard Notification constructor not supported:", e);
+                }
+            });
+        } else {
+            try {
+                const notification = new Notification(title, options);
+                notification.onclick = () => {
+                    window.focus();
+                    if (isMatch) {
+                        nav('screen-waiting');
+                    } else if (matchId) {
+                        openChatForMatch(matchId);
+                    }
+                };
+            } catch (e) {
+                console.error("Standard Notification constructor not supported:", e);
+            }
+        }
     }
 }
 

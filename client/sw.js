@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kolosok-cache-v41';
+const CACHE_NAME = 'kolosok-cache-v42';
 const ASSETS = [
   './index.html',
   './style.css',
@@ -81,5 +81,39 @@ self.addEventListener('fetch', (event) => {
       }).catch(() => cached);
       return cached || networkFetch;
     })
+  );
+});
+
+// PWA Notification Click Routing
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // If a window client is already open, focus it
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            // Send message to focus/nav
+            if (event.notification.data) {
+              client.postMessage({
+                type: 'NOTIFICATION_CLICK',
+                matchId: event.notification.data.matchId,
+                isMatch: event.notification.data.isMatch
+              });
+            }
+            return client.focus();
+          }
+        }
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          let url = './';
+          if (event.notification.data) {
+            const data = event.notification.data;
+            url = `./?notification=true&matchId=${data.matchId}&isMatch=${data.isMatch}`;
+          }
+          return self.clients.openWindow(url);
+        }
+      })
   );
 });
