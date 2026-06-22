@@ -893,7 +893,11 @@ try:
         return ENGINE.run_match_round(force=True)
 
     @app.post("/admin/reset")
-    def admin_reset():
+    def admin_reset(payload: ResetPayload):
+        import hashlib
+        hashed_input = hashlib.sha256(payload.password.encode('utf-8')).hexdigest()
+        if hashed_input != "f630aa1074966fc0d09d3344e4b95ed6b5878ddb967afd0a24b4f6c9ec0533b5":
+            raise HTTPException(403, "Invalid reset password")
         ENGINE.clear_db()
         return {"ok": True}
 
