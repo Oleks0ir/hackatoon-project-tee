@@ -271,6 +271,11 @@ function restoreProfileFromLocalStorage() {
                 });
             }
         }
+        
+        const storyTextEl = document.getElementById('story-text');
+        if (storyTextEl) {
+            storyTextEl.dispatchEvent(new Event('input'));
+        }
     } catch (e) {
         console.error("Error restoring profile from local storage:", e);
     }
@@ -387,6 +392,26 @@ window.addEventListener('DOMContentLoaded', () => {
             el.addEventListener('input', saveProfileState);
         }
     });
+
+    const storyText = document.getElementById('story-text');
+    if (storyText) {
+        const updateWordCount = () => {
+            const text = storyText.value.trim();
+            const words = text ? text.split(/\s+/).filter(w => w.length > 0) : [];
+            const count = words.length;
+            const indicator = document.getElementById('word-count-indicator');
+            if (indicator) {
+                indicator.innerText = `${count} / 10 words`;
+                if (count >= 10) {
+                    indicator.style.color = '#10b981'; // Green
+                } else {
+                    indicator.style.color = 'var(--text-muted)';
+                }
+            }
+        };
+        storyText.addEventListener('input', updateWordCount);
+        setTimeout(updateWordCount, 250);
+    }
 });
 
 let realMatch = null;
@@ -508,6 +533,11 @@ function startMatching() {
     }
     if (!story) {
         showToast("Please write your story before submitting.", "error");
+        return;
+    }
+    const storyWords = story.split(/\s+/).filter(w => w.length > 0);
+    if (storyWords.length < 10) {
+        showToast("Please write a longer story (minimum 10 words) for accurate matching.", "error");
         return;
     }
 
