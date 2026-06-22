@@ -145,18 +145,18 @@
                 <div class="input-group">
                     <label>Your Gender</label>
                     <div class="gender-chips" id="my-gender-group">
-                        <button class="lang-chip active" onclick="selectGender('my-gender-group', this)">Male</button>
-                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)">Female</button>
-                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)">Other</button>
+                        <button class="lang-chip active" onclick="selectGender('my-gender-group', this)" data-val="Male">Male</button>
+                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)" data-val="Female">Female</button>
+                        <button class="lang-chip" onclick="selectGender('my-gender-group', this)" data-val="Other">Other</button>
                     </div>
                 </div>
 
                 <div class="input-group">
                     <label>Looking for</label>
                     <div class="gender-chips" id="target-gender-group">
-                        <button class="lang-chip active" onclick="selectGender('target-gender-group', this)">Female</button>
-                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)">Male</button>
-                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)">All</button>
+                        <button class="lang-chip active" onclick="selectGender('target-gender-group', this)" data-val="Female">Female</button>
+                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)" data-val="Male">Male</button>
+                        <button class="lang-chip" onclick="selectGender('target-gender-group', this)" data-val="All">All</button>
                     </div>
                 </div>
 
@@ -230,129 +230,129 @@
             
             <div class="lang-family-subtitle">Germanic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">English</button>
-                <button class="lang-chip" onclick="toggleLang(this)">German</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Dutch</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Swedish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Norwegian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Danish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Icelandic</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="English">English</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="German">German</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Dutch">Dutch</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Swedish">Swedish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Norwegian">Norwegian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Danish">Danish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Icelandic">Icelandic</button>
             </div>
 
             <div class="lang-family-subtitle">Romance</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Spanish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">French</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Italian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Portuguese</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Romanian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Catalan</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Spanish">Spanish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="French">French</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Italian">Italian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Portuguese">Portuguese</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Romanian">Romanian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Catalan">Catalan</button>
             </div>
 
             <div class="lang-family-subtitle">Slavic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Russian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Polish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Ukrainian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Czech</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Slovak</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Bulgarian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Croatian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Serbian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Slovenian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Russian">Russian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Polish">Polish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Ukrainian">Ukrainian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Czech">Czech</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Slovak">Slovak</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Bulgarian">Bulgarian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Croatian">Croatian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Serbian">Serbian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Slovenian">Slovenian</button>
             </div>
 
             <div class="lang-family-subtitle">Baltic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Lithuanian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Latvian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Lithuanian">Lithuanian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Latvian">Latvian</button>
             </div>
 
             <div class="lang-family-subtitle">Uralic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Finnish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hungarian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Estonian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Finnish">Finnish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Hungarian">Hungarian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Estonian">Estonian</button>
             </div>
 
             <div class="lang-family-subtitle">Other European</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Greek</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Irish</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Welsh</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Basque</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Albanian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Greek">Greek</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Irish">Irish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Welsh">Welsh</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Basque">Basque</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Albanian">Albanian</button>
             </div>
 
             <h4>Asia</h4>
             
             <div class="lang-family-subtitle">Sino-Tibetan, Japonic & Koreanic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Mandarin</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Cantonese</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Japanese</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Korean</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Mandarin">Mandarin</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Cantonese">Cantonese</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Japanese">Japanese</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Korean">Korean</button>
             </div>
 
             <div class="lang-family-subtitle">Indo-Aryan & Iranian</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Hindi</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Bengali</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Punjabi</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Urdu</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Persian (Farsi)</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Hindi">Hindi</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Bengali">Bengali</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Punjabi">Punjabi</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Urdu">Urdu</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Persian (Farsi)">Persian (Farsi)</button>
             </div>
 
             <div class="lang-family-subtitle">Dravidian</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Tamil</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Telugu</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Kannada</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Malayalam</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Tamil">Tamil</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Telugu">Telugu</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Kannada">Kannada</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Malayalam">Malayalam</button>
             </div>
 
             <div class="lang-family-subtitle">Austroasiatic, Tai-Kadai & Austronesian</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Vietnamese</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Thai</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Indonesian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Malay</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Tagalog</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Vietnamese">Vietnamese</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Thai">Thai</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Indonesian">Indonesian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Malay">Malay</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Tagalog">Tagalog</button>
             </div>
 
             <div class="lang-family-subtitle">Turkic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Turkish</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Turkish">Turkish</button>
             </div>
 
             <h4>Africa & Middle East</h4>
             
             <div class="lang-family-subtitle">Semitic & Cushitic (Afroasiatic)</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Arabic</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hebrew</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Amharic</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Somali</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Arabic">Arabic</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Hebrew">Hebrew</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Amharic">Amharic</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Somali">Somali</button>
             </div>
 
             <div class="lang-family-subtitle">Niger-Congo & Germanic</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Swahili</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Yoruba</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Igbo</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Zulu</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Afrikaans</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Swahili">Swahili</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Yoruba">Yoruba</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Igbo">Igbo</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Zulu">Zulu</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Afrikaans">Afrikaans</button>
             </div>
 
             <h4>Americas & Oceania</h4>
             
             <div class="lang-family-subtitle">Indigenous American & Austronesian</div>
             <div class="lang-chips">
-                <button class="lang-chip" onclick="toggleLang(this)">Quechua</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Guarani</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Maori</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Hawaiian</button>
-                <button class="lang-chip" onclick="toggleLang(this)">Navajo</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Quechua">Quechua</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Guarani">Guarani</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Maori">Maori</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Hawaiian">Hawaiian</button>
+                <button class="lang-chip" onclick="toggleLang(this)" data-val="Navajo">Navajo</button>
             </div>
         </div>
         <div class="modal-footer">

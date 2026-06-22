@@ -134,12 +134,150 @@ function selectAvatar(element, index) {
     selectedAvatarIndex = index;
     // Simulate local storage of Key/Profile
     localStorage.setItem('kolosok_avatar', index);
+    saveProfileState();
 }
 
 // Language Selection Logic
 let selectedLangs = [];
+
+function saveProfileState() {
+    try {
+        const fname = document.getElementById('fname') ? document.getElementById('fname').value.trim() : "";
+        const lname = document.getElementById('lname') ? document.getElementById('lname').value.trim() : "";
+        const ageVal = document.getElementById('my-age') ? document.getElementById('my-age').value : "";
+        const story = document.getElementById('story-text') ? document.getElementById('story-text').value.trim() : "";
+        
+        const myGenderActive = document.querySelector('#my-gender-group .lang-chip.active');
+        const targetGenderActive = document.querySelector('#target-gender-group .lang-chip.active');
+        const myGender = myGenderActive ? (myGenderActive.getAttribute('data-val') || myGenderActive.innerText.trim()) : "";
+        const targetGender = targetGenderActive ? (targetGenderActive.getAttribute('data-val') || targetGenderActive.innerText.trim()) : "";
+        
+        const ageMinVal = document.getElementById('age-min') ? parseInt(document.getElementById('age-min').value, 10) : 18;
+        const ageMaxVal = document.getElementById('age-max') ? parseInt(document.getElementById('age-max').value, 10) : 99;
+
+        localStorage.setItem('kolosok_profile', JSON.stringify({
+            fname: fname,
+            lname: lname,
+            age: ageVal,
+            story: story,
+            myGender: myGender,
+            targetGender: targetGender,
+            ageMin: ageMinVal,
+            ageMax: ageMaxVal,
+            languages: selectedLangs,
+            timestamp: new Date().toISOString()
+        }));
+    } catch (e) {
+        console.error("Error saving profile state:", e);
+    }
+}
+
+function restoreProfileFromLocalStorage() {
+    try {
+        const profileJson = localStorage.getItem('kolosok_profile');
+        if (!profileJson) return;
+        
+        const profileObj = JSON.parse(profileJson);
+        
+        // 1. Text Fields
+        if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
+        if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
+        if (document.getElementById('my-age')) {
+            document.getElementById('my-age').value = profileObj.age || "18";
+            setTimeout(() => setAgePickerValue(profileObj.age), 150);
+        }
+        if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
+        
+        // 2. Avatar
+        const avatarVal = localStorage.getItem('kolosok_avatar');
+        if (avatarVal !== null) {
+            selectedAvatarIndex = parseInt(avatarVal, 10);
+            setTimeout(() => {
+                const avatarItems = document.querySelectorAll('.avatar-item');
+                avatarItems.forEach(el => el.classList.remove('selected'));
+                if (avatarItems[selectedAvatarIndex]) {
+                    avatarItems[selectedAvatarIndex].classList.add('selected');
+                }
+            }, 100);
+        }
+        
+        // 3. Genders
+        if (profileObj.myGender) {
+            const myGenderGroup = document.getElementById('my-gender-group');
+            if (myGenderGroup) {
+                myGenderGroup.querySelectorAll('.lang-chip').forEach(btn => {
+                    const val = btn.getAttribute('data-val') || btn.innerText.trim();
+                    if (val === profileObj.myGender) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+        }
+        if (profileObj.targetGender) {
+            const targetGenderGroup = document.getElementById('target-gender-group');
+            if (targetGenderGroup) {
+                targetGenderGroup.querySelectorAll('.lang-chip').forEach(btn => {
+                    const val = btn.getAttribute('data-val') || btn.innerText.trim();
+                    if (val === profileObj.targetGender) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+        }
+        
+        // 4. Age Range
+        if (profileObj.ageMin !== undefined && profileObj.ageMax !== undefined) {
+            const ageMinEl = document.getElementById('age-min');
+            const ageMaxEl = document.getElementById('age-max');
+            const ageValEl = document.getElementById('age-val');
+            if (ageMinEl && ageMaxEl) {
+                ageMinEl.value = profileObj.ageMin;
+                ageMaxEl.value = profileObj.ageMax;
+                if (ageValEl) {
+                    ageValEl.innerText = ageMinEl.value + " - " + ageMaxEl.value;
+                }
+                updateSliderTrack();
+            }
+        }
+        
+        // 5. Languages
+        if (profileObj.languages) {
+            selectedLangs = profileObj.languages;
+            
+            // Update selection UI text
+            const langText = document.getElementById('selected-langs-text');
+            if (langText) {
+                if (selectedLangs.length > 0) {
+                    langText.innerText = 'Selected: ' + selectedLangs.join(', ');
+                } else {
+                    langText.innerText = '';
+                }
+            }
+            
+            // Highlight corresponding buttons in the modal
+            const langModal = document.getElementById('lang-modal');
+            if (langModal) {
+                langModal.querySelectorAll('.lang-chip').forEach(btn => {
+                    const val = btn.getAttribute('data-val') || btn.innerText.trim();
+                    if (selectedLangs.includes(val)) {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+            }
+        }
+    } catch (e) {
+        console.error("Error restoring profile from local storage:", e);
+    }
+}
+
 function toggleLang(btn) {
-    const lang = btn.innerText;
+    const lang = btn.getAttribute('data-val') || btn.innerText.trim();
     if (btn.classList.contains('active')) {
         btn.classList.remove('active');
         selectedLangs = selectedLangs.filter(l => l !== lang);
@@ -154,6 +292,7 @@ function toggleLang(btn) {
     } else {
         langText.innerText = '';
     }
+    saveProfileState();
 }
 
 // Exclusive Selection for Gender Groups
@@ -163,6 +302,7 @@ function selectGender(groupId, btn) {
     group.querySelectorAll('.lang-chip').forEach(el => el.classList.remove('active'));
     // Set clicked button to active
     btn.classList.add('active');
+    saveProfileState();
 }
 
 // Dual Range Slider Logic
@@ -180,6 +320,7 @@ function slideMin() {
     updateSliderTrack();
     ageMin.style.zIndex = "3";
     ageMax.style.zIndex = "2";
+    saveProfileState();
 }
 
 function slideMax() {
@@ -190,6 +331,7 @@ function slideMax() {
     updateSliderTrack();
     ageMin.style.zIndex = "2";
     ageMax.style.zIndex = "3";
+    saveProfileState();
 }
 
 function updateSliderTrack() {
@@ -231,10 +373,20 @@ window.addEventListener('DOMContentLoaded', () => {
     const savedToken = localStorage.getItem('kolosok_token');
     if (savedToken) {
         restoreSession(savedToken);
+    } else {
+        restoreProfileFromLocalStorage();
     }
     
     // Request notification permission
     requestNotificationPermission();
+
+    // Bind input listeners for text changes to auto-save profile
+    ['fname', 'lname', 'story-text'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', saveProfileState);
+        }
+    });
 });
 
 let realMatch = null;
@@ -374,8 +526,8 @@ function startMatching() {
     nav('screen-waiting');
 
     // Collect data
-    const myGender = myGenderActive.innerText;
-    const targetGender = targetGenderActive.innerText;
+    const myGender = myGenderActive.getAttribute('data-val') || myGenderActive.innerText.trim();
+    const targetGender = targetGenderActive.getAttribute('data-val') || targetGenderActive.innerText.trim();
     const ageMinVal = parseInt(document.getElementById('age-min').value, 10) || 18;
     const ageMaxVal = parseInt(document.getElementById('age-max').value, 10) || 99;
 
@@ -410,13 +562,7 @@ function startMatching() {
     };
     
     // Save locally
-    localStorage.setItem('kolosok_profile', JSON.stringify({
-        fname: fname,
-        lname: lname,
-        age: age,
-        story: story,
-        timestamp: payload.metadata.client_timestamp
-    }));
+    saveProfileState();
 
     // Establish secure connection and send POST request to the submission endpoint
     console.log("Establishing secure connection to TEE and submitting profile...");
@@ -913,31 +1059,7 @@ function restoreSession(token) {
         console.log("Session restore poll result:", data);
         
         // Restore local profile values from localStorage if available
-        try {
-            const profileJson = localStorage.getItem('kolosok_profile');
-            if (profileJson) {
-                const profileObj = JSON.parse(profileJson);
-                if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
-                if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
-                if (document.getElementById('my-age')) {
-                    document.getElementById('my-age').value = profileObj.age || "18";
-                    setTimeout(() => setAgePickerValue(profileObj.age), 150);
-                }
-                if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
-            }
-            const avatarVal = localStorage.getItem('kolosok_avatar');
-            if (avatarVal !== null) {
-                selectedAvatarIndex = parseInt(avatarVal, 10);
-                setTimeout(() => {
-                    const avatarItems = document.querySelectorAll('.avatar-item');
-                    if (avatarItems[selectedAvatarIndex]) {
-                        avatarItems[selectedAvatarIndex].classList.add('selected');
-                    }
-                }, 100);
-            }
-        } catch (e) {
-            console.error("Error restoring profile fields:", e);
-        }
+        restoreProfileFromLocalStorage();
         
         if (data.round_done) {
             if (data.matched) {
@@ -957,31 +1079,7 @@ function restoreSession(token) {
         console.warn("Session restoration failed:", error);
         
         // Populate local fields anyway from local storage if available
-        try {
-            const profileJson = localStorage.getItem('kolosok_profile');
-            if (profileJson) {
-                const profileObj = JSON.parse(profileJson);
-                if (document.getElementById('fname')) document.getElementById('fname').value = profileObj.fname || "";
-                if (document.getElementById('lname')) document.getElementById('lname').value = profileObj.lname || "";
-                if (document.getElementById('my-age')) {
-                    document.getElementById('my-age').value = profileObj.age || "18";
-                    setTimeout(() => setAgePickerValue(profileObj.age), 150);
-                }
-                if (document.getElementById('story-text')) document.getElementById('story-text').value = profileObj.story || "";
-            }
-            const avatarVal = localStorage.getItem('kolosok_avatar');
-            if (avatarVal !== null) {
-                selectedAvatarIndex = parseInt(avatarVal, 10);
-                setTimeout(() => {
-                    const avatarItems = document.querySelectorAll('.avatar-item');
-                    if (avatarItems[selectedAvatarIndex]) {
-                        avatarItems[selectedAvatarIndex].classList.add('selected');
-                    }
-                }, 100);
-            }
-        } catch (e) {
-            console.error("Error restoring profile fields:", e);
-        }
+        restoreProfileFromLocalStorage();
         
         if (error.message !== "Invalid token on server") {
             showToast("Server offline. Displaying local profile data.", "warning");
@@ -1049,6 +1147,7 @@ function initAgePicker() {
         });
 
         ageInput.value = finalAge;
+        saveProfileState();
     };
 
     // Initial positioning (default to 18)
@@ -1081,6 +1180,7 @@ function setAgePickerValue(age) {
     
     // Scroll to position
     picker.scrollLeft = (targetAge - minAge) * itemWidth;
+    saveProfileState();
 }
 
 // Web Notification Permission & Dispatcher
