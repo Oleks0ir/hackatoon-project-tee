@@ -1,5 +1,4 @@
-// Bump CACHE_NAME on every deploy so the activate handler purges stale assets.
-const CACHE_NAME = 'kolosok-cache-v40';
+const CACHE_NAME = 'kolosok-cache-v41';
 const ASSETS = [
   './index.html',
   './style.css',
@@ -7,6 +6,8 @@ const ASSETS = [
   './icon.svg',
   './daytee_logo_192.png',
   './daytee_logo_512.png',
+  './daytee_logo_maskable_192.png',
+  './daytee_logo_maskable_512.png',
   './daytee_logo.png',
   './kolosok_vector.png',
   './manifest.json',
