@@ -17,9 +17,15 @@ if ('serviceWorker' in navigator) {
                     }
                 });
                 
+                console.log('[PWA] Notification permission state on load:', Notification.permission);
                 // Attempt Web Push subscription if permission is already granted
                 if (Notification.permission === 'granted') {
-                    subscribeToWebPush(reg);
+                    navigator.serviceWorker.ready.then(activeReg => {
+                        console.log('[PWA] Service worker ready on load, starting push subscription...');
+                        subscribeToWebPush(activeReg);
+                    });
+                } else {
+                    console.log('[PWA] Notification permission not granted yet. Current state:', Notification.permission);
                 }
             })
             .catch(err => console.error('[PWA] Service worker registration failed', err));
@@ -676,10 +682,14 @@ function startMatching() {
             showToast("Profile submitted! Securing matchmaking enclave...", "success");
             
             // Subscribe to Web Push for the new token
-            if ('serviceWorker' in navigator && Notification.permission === 'granted') {
-                navigator.serviceWorker.ready.then(reg => {
-                    subscribeToWebPush(reg);
-                });
+            if ('serviceWorker' in navigator) {
+                console.log('[PWA] Attempting push subscription for new token. Permission:', Notification.permission);
+                if (Notification.permission === 'granted') {
+                    navigator.serviceWorker.ready.then(reg => {
+                        console.log('[PWA] Service worker ready for new token, subscribing...');
+                        subscribeToWebPush(reg);
+                    });
+                }
             }
             
             startPolling(data.token);
@@ -1168,10 +1178,14 @@ function restoreSession(token) {
         console.log("Session restore poll result:", data);
         
         // Attempt Web Push subscription to ensure server has our subscription for this restored token
-        if ('serviceWorker' in navigator && Notification.permission === 'granted') {
-            navigator.serviceWorker.ready.then(reg => {
-                subscribeToWebPush(reg);
-            });
+        if ('serviceWorker' in navigator) {
+            console.log('[PWA] Attempting push subscription for restored token. Permission:', Notification.permission);
+            if (Notification.permission === 'granted') {
+                navigator.serviceWorker.ready.then(reg => {
+                    console.log('[PWA] Service worker ready for restored token, subscribing...');
+                    subscribeToWebPush(reg);
+                });
+            }
         }
         
         // Restore local profile values from localStorage if available
@@ -1391,35 +1405,50 @@ function startBackgroundChatPolling() {
 
 // Web Push Helper Functions
 function subscribeToWebPush(registration) {
+    console.log("[PWA] Entering subscribeToWebPush function.");
     if (!registration.pushManager) {
         console.warn("[PWA] PushManager not supported in this browser.");
         return;
     }
     
+    console.log("[PWA] Fetching VAPID public key from /admin/vapid-public-key...");
     // Fetch VAPID public key from backend
     fetch('/admin/vapid-public-key')
     .then(res => {
+        console.log("[PWA] VAPID public key response status:", res.status);
         if (!res.ok) throw new Error("VAPID key endpoint returned status: " + res.status);
         return res.json();
     })
     .then(data => {
+        console.log("[PWA] VAPID public key payload:", data);
         if (!data.public_key) {
             console.log("[PWA] VAPID keys not configured on server. Skipping push subscription.");
             return;
         }
         
+        console.log("[PWA] Converting applicationServerKey...");
         const applicationServerKey = urlBase64ToUint8Array(data.public_key);
+        console.log("[PWA] Subscribing with PushManager...");
         return registration.pushManager.subscribe({
             userVisibleOnly: true,
             applicationServerKey: applicationServerKey
         });
     })
     .then(subscription => {
-        if (!subscription) return;
+        console.log("[PWA] PushManager subscription obtained:", subscription);
+        if (!subscription) {
+            console.warn("[PWA] No subscription returned from PushManager.");
+            return;
+        }
         
         const token = localStorage.getItem('kolosok_token');
-        if (!token) return;
+        console.log("[PWA] Current session token from localStorage:", token);
+        if (!token) {
+            console.warn("[PWA] No session token found in localStorage. Cannot map subscription on backend.");
+            return;
+        }
         
+        console.log("[PWA] Sending subscription to backend /chat/subscribe...");
         // Send subscription object to backend
         return fetch('/chat/subscribe', {
             method: 'POST',
@@ -1428,12 +1457,17 @@ function subscribeToWebPush(registration) {
         });
     })
     .then(res => {
-        if (res && res.ok) {
-            console.log("[PWA] Registered push subscription on backend.");
+        if (res) {
+            console.log("[PWA] Backend subscribe response status:", res.status);
+            if (res.ok) {
+                console.log("[PWA] Registered push subscription on backend successfully.");
+            } else {
+                console.warn("[PWA] Backend subscribe failed with status:", res.status);
+            }
         }
     })
     .catch(err => {
-        console.warn("[PWA] Web Push subscription failed:", err);
+        console.error("[PWA] Web Push subscription workflow failed:", err);
     });
 }
 
