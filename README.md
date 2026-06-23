@@ -62,3 +62,12 @@
 - **Zero public directory**: No directories, matching lists, or swipe lists exist. Users only discover each other when a highly compatible cryptographic matching channel is generated inside the enclave.
 - **Ephemeral Storage**: Server data is stored inside local RAM enclaves. Admin triggers or server power cycles wipe all memory logs automatically.
 - **Git Safety**: Local databases (`db.json` files) are automatically ignored by `.gitignore` to prevent secret leaking.
+
+-----------
+
+After ssh:
+```
+cd ~/hackatoon-project-tee
+git pull origin main
+sudo systemctl restart tee-backend tee-frontend
+```

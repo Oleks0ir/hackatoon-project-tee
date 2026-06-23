@@ -567,9 +567,11 @@ class MatchEngine:
                         for token in self._profiles:
                             self._results[token] = MatchResult(matched=False, matches=[], evaluations=debug_scores_temp.get(token, []))
                         
-                        matched_uids = set()
+                        match_counts = {}
                         for score, a_uid, b_uid, verdict, reasons in scored:
-                            if a_uid in matched_uids or b_uid in matched_uids:
+                            count_a = match_counts.get(a_uid, 0)
+                            count_b = match_counts.get(b_uid, 0)
+                            if count_a >= 3 or count_b >= 3:
                                 continue
                             a = by_uid.get(a_uid)
                             b = by_uid.get(b_uid)
@@ -614,8 +616,8 @@ class MatchEngine:
                                     is_match=True
                                 )
                             
-                            matched_uids.add(a_uid)
-                            matched_uids.add(b_uid)
+                            match_counts[a_uid] = count_a + 1
+                            match_counts[b_uid] = count_b + 1
                             pairs += 1
                             logger.info(f"[ENGINE] Match formed: {a.handle} <-> {b.handle} (Score={score}%, Code={code})")
 
