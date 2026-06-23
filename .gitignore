@@ -34,3 +34,5 @@ dist/
 # Database files
 db.json
 server/db.json
+server/backups/
+
