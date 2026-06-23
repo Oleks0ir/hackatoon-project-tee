@@ -674,6 +674,14 @@ function startMatching() {
         if (data.ok && data.token) {
             localStorage.setItem('kolosok_token', data.token);
             showToast("Profile submitted! Securing matchmaking enclave...", "success");
+            
+            // Subscribe to Web Push for the new token
+            if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+                navigator.serviceWorker.ready.then(reg => {
+                    subscribeToWebPush(reg);
+                });
+            }
+            
             startPolling(data.token);
         } else {
             const errorMsg = data.error || 'Unknown error occurred';
@@ -1158,6 +1166,13 @@ function restoreSession(token) {
     })
     .then(data => {
         console.log("Session restore poll result:", data);
+        
+        // Attempt Web Push subscription to ensure server has our subscription for this restored token
+        if ('serviceWorker' in navigator && Notification.permission === 'granted') {
+            navigator.serviceWorker.ready.then(reg => {
+                subscribeToWebPush(reg);
+            });
+        }
         
         // Restore local profile values from localStorage if available
         restoreProfileFromLocalStorage();

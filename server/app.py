@@ -27,7 +27,8 @@ from __future__ import annotations
 import os
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+    load_dotenv(dotenv_path)
 except ImportError:
     pass
 import secrets
