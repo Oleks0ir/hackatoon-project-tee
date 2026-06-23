@@ -36,6 +36,10 @@ db.json
 server/db.json
 server/backups/
 
+# Environment variables (Credentials)
+.env
+server/.env
+
 server/db.json.13:33_22.06.2023.bak
 server/db.json.todelete
 
