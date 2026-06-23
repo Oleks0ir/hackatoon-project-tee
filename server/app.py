@@ -993,9 +993,10 @@ ENGINE = MatchEngine()
 # Guarded so the engine above stays importable without fastapi installed.
 # ----------------------------------------------------------------------
 try:
-    from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+    from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import HTMLResponse
+    from fastapi.security import HTTPBasic, HTTPBasicCredentials
     from pydantic import BaseModel
 
     class ProfileBlock(BaseModel):
@@ -1034,6 +1035,9 @@ try:
         token: str
         subscription: dict
 
+    class ResetPayload(BaseModel):
+        password: str
+
     app = FastAPI(title="Matching server (prototype_no_keys)")
 
     # The users API is a separate web origin, so the browser needs CORS.
@@ -1045,6 +1049,21 @@ try:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    security = HTTPBasic()
+
+    def get_admin_user(credentials: HTTPBasicCredentials = Depends(security)):
+        import hashlib
+        hashed_password = hashlib.sha256(credentials.password.encode('utf-8')).hexdigest()
+        correct_hash = "47e52e0290d79744d781c62c5ba0c863bd745c4f47dfecac17a820899ff02915"
+        if credentials.username != "admin" or hashed_password != correct_hash:
+            from fastapi import status
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return credentials.username
 
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
@@ -1162,7 +1181,7 @@ try:
         ]
 
     @app.get("/admin/debug-view", response_class=HTMLResponse)
-    def debug_view():
+    def debug_view(username: str = Depends(get_admin_user)):
         with ENGINE._lock:
             profiles_copy = dict(ENGINE._profiles)
             results_copy = dict(ENGINE._results)
@@ -1187,19 +1206,11 @@ try:
             if res and res.matched:
                 matches_li = ""
                 for m in res.matches:
-                    reasons_li = "".join(f"<li>{r}</li>" for r in m.reasons)
                     matches_li += f"""
                     <div class="match-item" style="border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 10px;">
                         <div class="info-row"><strong>Partner:</strong> {m.peer_handle}</div>
                         <div class="info-row"><strong>Match Score:</strong> {m.score:.1f}%</div>
                         <div class="info-row"><strong>Connection Code:</strong> <span class="code">{m.connection_code}</span></div>
-                        <div class="info-row"><strong>Verdict:</strong> {m.verdict}</div>
-                        <div class="info-row">
-                            <strong>Matching Reasons:</strong>
-                            <ul class="reasons-list">
-                                {reasons_li}
-                            </ul>
-                        </div>
                     </div>
                     """
                 status_badge = f'<span class="badge matched">{len(res.matches)} Matches</span>'
@@ -1218,7 +1229,6 @@ try:
                         <div class="eval-item" style="border-bottom: 1px dashed var(--border); padding-bottom: 8px; margin-bottom: 8px;">
                             <div class="info-row"><strong>Evaluated Partner:</strong> {ev['peer_handle']}</div>
                             <div class="info-row"><strong>AI Score:</strong> {ev['score']:.1f}%</div>
-                            <div class="info-row"><strong>Verdict:</strong> {ev['verdict']}</div>
                         </div>
                         """
                     eval_html = f"""
