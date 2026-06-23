@@ -29,6 +29,7 @@ import secrets
 import logging
 import time
 import threading
+import datetime
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -174,10 +175,14 @@ class MatchEngine:
         self._lock = threading.RLock()
         self._db_dirty = False
         self._stop_saver = False
+        self._stop_backup = False
         self._load_db()
         
         self._saver_thread = threading.Thread(target=self._background_saver, daemon=True)
         self._saver_thread.start()
+        
+        self._backup_thread = threading.Thread(target=self._background_backup, daemon=True)
+        self._backup_thread.start()
 
     def _background_saver(self):
         while not self._stop_saver:
@@ -189,6 +194,122 @@ class MatchEngine:
                         self._db_dirty = False
             except Exception as e:
                 logger.error(f"[ENGINE] Saver thread error: {e}")
+
+    def _background_backup(self):
+        server_dir = os.path.dirname(__file__)
+        backup_dir = os.path.join(server_dir, "backups")
+        try:
+            os.makedirs(backup_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"[ENGINE] Failed to create backups directory: {e}")
+            return
+
+        interval_seconds = 6 * 3600  # 6 hours
+        
+        # Initialize last_backup_time to 0.0 so a backup is run shortly after startup.
+        last_backup_time = 0.0
+        
+        while not self._stop_backup:
+            now = time.time()
+            if now - last_backup_time >= interval_seconds:
+                try:
+                    self._run_backup_now(backup_dir)
+                    last_backup_time = now
+                except Exception as e:
+                    logger.error(f"[ENGINE] Backup thread error: {e}")
+            
+            # Sleep in short increments of 10 seconds to allow responsive thread shutdown
+            for _ in range(6):
+                if self._stop_backup:
+                    break
+                time.sleep(10.0)
+
+    def _run_backup_now(self, backup_dir: str):
+        # Generate timestamp safe for Windows/Linux/Mac filesystems (no colons)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_filename = f"db_backup_{timestamp}.json.bak"
+        backup_path = os.path.join(backup_dir, backup_filename)
+        
+        with self._lock:
+            data = {
+                "profiles": {},
+                "results": {},
+                "chat_rooms": {},
+                "round_done": self._round_done
+            }
+            for token, p in self._profiles.items():
+                data["profiles"][token] = {
+                    "user_id": p.user_id,
+                    "token": p.token,
+                    "handle": p.handle,
+                    "last_name": p.last_name,
+                    "text": p.text,
+                    "wants": p.wants,
+                    "dealbreakers": p.dealbreakers,
+                    "my_gender": p.my_gender,
+                    "target_gender": p.target_gender,
+                    "age": p.age,
+                    "age_min": p.age_min,
+                    "age_max": p.age_max,
+                    "languages": p.languages,
+                    "vector": p.vector.tolist() if hasattr(p.vector, "tolist") else list(p.vector)
+                }
+            for token, res in self._results.items():
+                data["results"][token] = {
+                    "matched": res.matched,
+                    "matches": [
+                        {
+                            "peer_handle": m.peer_handle,
+                            "connection_code": m.connection_code,
+                            "score": m.score,
+                            "verdict": m.verdict,
+                            "reasons": m.reasons
+                        }
+                        for m in getattr(res, "matches", [])
+                    ],
+                    "evaluations": getattr(res, "evaluations", [])
+                }
+            for room_id, messages in self._chat_rooms.items():
+                data["chat_rooms"][room_id] = [
+                    {
+                        "sender_token": m.sender_token,
+                        "sender_handle": m.sender_handle,
+                        "text": m.text,
+                        "timestamp": m.timestamp
+                    }
+                    for m in messages
+                ]
+
+        import json
+        temp_path = backup_path + ".tmp"
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            os.replace(temp_path, backup_path)
+            logger.info(f"[ENGINE] Database backup successfully saved to: {backup_filename}")
+        except Exception as e:
+            logger.error(f"[ENGINE] Failed to save backup to file: {e}")
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
+        
+        # Clean up old backups
+        self._cleanup_old_backups(backup_dir)
+
+    def _cleanup_old_backups(self, backup_dir: str):
+        now = time.time()
+        one_week_seconds = 7 * 24 * 3600
+        try:
+            for entry in os.scandir(backup_dir):
+                if entry.is_file() and entry.name.startswith("db_backup_") and entry.name.endswith(".json.bak"):
+                    file_age = now - entry.stat().st_mtime
+                    if file_age > one_week_seconds:
+                        os.remove(entry.path)
+                        logger.info(f"[ENGINE] Deleted old backup file: {entry.name}")
+        except Exception as e:
+            logger.error(f"[ENGINE] Error cleaning up old backups: {e}")
 
     # -- submission ------------------------------------------------------
     def submit(self, payload: dict[str, Any]) -> str:
