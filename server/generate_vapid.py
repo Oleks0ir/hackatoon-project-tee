@@ -26,7 +26,10 @@ raw_pub = vapid.public_key.public_bytes(
     serialization.Encoding.X962,
     serialization.PublicFormat.UncompressedPoint
 )
-public_key_base64 = b64urlencode(raw_pub).decode('utf-8')
+public_key_base64 = b64urlencode(raw_pub)
+if isinstance(public_key_base64, bytes):
+    public_key_base64 = public_key_base64.decode('utf-8')
+
 
 print("\n2. Configuration Output:")
 print("----------------------------------------------------------------------")
