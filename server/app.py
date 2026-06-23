@@ -25,6 +25,11 @@ is not installed (see simulate_web.py).
 from __future__ import annotations
 
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 import secrets
 import logging
 import time
