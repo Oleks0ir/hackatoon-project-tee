@@ -117,3 +117,27 @@ self.addEventListener('notificationclick', (event) => {
       })
   );
 });
+
+// PWA Background Push Event Listener
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  
+  try {
+    const data = event.data.json();
+    const title = data.title || "New Alert!";
+    const options = {
+      body: data.body || "",
+      icon: './daytee_logo.png',
+      tag: data.isMatch ? 'new-match' : `chat-${data.matchId}`,
+      renotify: true,
+      data: { matchId: data.matchId, isMatch: data.isMatch }
+    };
+    
+    event.waitUntil(
+      self.registration.showNotification(title, options)
+    );
+  } catch (err) {
+    console.error("[PWA SW] Error displaying push notification:", err);
+  }
+});
+

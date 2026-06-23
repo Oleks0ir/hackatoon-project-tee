@@ -167,6 +167,7 @@ class MatchEngine:
         self._profiles: dict[str, Profile] = {}     # token -> Profile
         self._results: dict[str, MatchResult] = {}   # token -> result
         self._chat_rooms: dict[str, list[ChatMessage]] = {} # room_id -> messages
+        self._push_subscriptions: dict[str, list[dict]] = {} # token -> list of push subscriptions
         self._round_done = False
         self._ai_threshold = ai_threshold
         self._ai = None  # lazily loaded; the model is expensive to construct
@@ -582,6 +583,13 @@ class MatchEngine:
                                     verdict=verdict,
                                     reasons=reasons
                                 ))
+                                self.send_push_notification(
+                                    token=a.token,
+                                    title="New Match Found! 🎉",
+                                    body=f"You matched with {b.handle}!",
+                                    match_id=f"real_match_{code}",
+                                    is_match=True
+                                )
                             
                             if b.token in self._results:
                                 self._results[b.token].matched = True
@@ -592,6 +600,13 @@ class MatchEngine:
                                     verdict=verdict,
                                     reasons=reasons
                                 ))
+                                self.send_push_notification(
+                                    token=b.token,
+                                    title="New Match Found! 🎉",
+                                    body=f"You matched with {a.handle}!",
+                                    match_id=f"real_match_{code}",
+                                    is_match=True
+                                )
                             
                             matched_uids.add(a_uid)
                             matched_uids.add(b_uid)
@@ -677,6 +692,29 @@ class MatchEngine:
             self._chat_rooms[room_id].append(msg)
             logger.info(f"[ENGINE] Chat message sent: from='{profile.handle}' room='{room_id}' text='{text}'")
             self._save_db()
+            
+            # Notify peer via Push Notifications
+            peer_token = None
+            for p_token, p in self._profiles.items():
+                if p_token != token:
+                    res = self._results.get(p_token)
+                    if res and res.matched:
+                        for m in res.matches:
+                            if m.connection_code == room_id:
+                                peer_token = p_token
+                                break
+                if peer_token:
+                    break
+            
+            if peer_token:
+                self.send_push_notification(
+                    token=peer_token,
+                    title=profile.handle,
+                    body=text,
+                    match_id=f"real_match_{room_id}",
+                    is_match=False
+                )
+            
             return True
 
     def get_messages(self, token: str, room_id: Optional[str] = None) -> list[dict]:
@@ -741,6 +779,7 @@ class MatchEngine:
                 "profiles": {},
                 "results": {},
                 "chat_rooms": {},
+                "push_subscriptions": self._push_subscriptions,
                 "round_done": self._round_done
             }
             for token, p in self._profiles.items():
@@ -805,6 +844,7 @@ class MatchEngine:
             with open(db_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             self._round_done = data.get("round_done", False)
+            self._push_subscriptions = data.get("push_subscriptions", {})
             for token, p_data in data.get("profiles", {}).items():
                 self._profiles[token] = Profile(
                     user_id=p_data["user_id"],
@@ -873,9 +913,68 @@ class MatchEngine:
             self._profiles = {}
             self._results = {}
             self._chat_rooms = {}
+            self._push_subscriptions = {}
             self._round_done = False
             self._save_db_now()
             logger.info("[ENGINE] Database successfully cleared via debug admin request.")
+
+    def save_push_subscription(self, token: str, sub: dict):
+        with self._lock:
+            self._push_subscriptions.setdefault(token, [])
+            if sub not in self._push_subscriptions[token]:
+                self._push_subscriptions[token].append(sub)
+                self._save_db()
+                logger.info(f"[ENGINE] Saved push subscription for token {token[:8]}...")
+
+    def send_push_notification(self, token: str, title: str, body: str, match_id: str = "", is_match: bool = False):
+        subscriptions = self._push_subscriptions.get(token, [])
+        if not subscriptions:
+            return
+        
+        try:
+            from pywebpush import webpush, WebPushException
+        except ImportError:
+            logger.warning("[ENGINE] pywebpush library is not installed. Skipping push notification.")
+            return
+            
+        vapid_private = os.environ.get("VAPID_PRIVATE_KEY")
+        vapid_public = os.environ.get("VAPID_PUBLIC_KEY")
+        vapid_claims = {"sub": os.environ.get("VAPID_CLAIM_EMAIL", "mailto:admin@example.com")}
+        
+        if not vapid_private or not vapid_public:
+            logger.warning("[ENGINE] VAPID keys not configured in environment. Skipping push notification.")
+            return
+            
+        payload = {
+            "title": title,
+            "body": body,
+            "matchId": match_id,
+            "isMatch": is_match
+        }
+        import json
+        payload_str = json.dumps(payload)
+        
+        for sub in list(subscriptions):
+            try:
+                webpush(
+                    subscription_info=sub,
+                    data=payload_str,
+                    vapid_private_key=vapid_private,
+                    vapid_public_key=vapid_public,
+                    vapid_claims=vapid_claims
+                )
+                logger.info(f"[ENGINE] Sent push notification to subscription for token {token[:8]}...")
+            except WebPushException as ex:
+                if ex.response is not None and ex.response.status_code in [404, 410]:
+                    with self._lock:
+                        if sub in self._push_subscriptions.get(token, []):
+                            self._push_subscriptions[token].remove(sub)
+                            self._save_db()
+                            logger.info(f"[ENGINE] Removed expired push subscription for token {token[:8]}...")
+                else:
+                    logger.error(f"[ENGINE] WebPushException: {ex}")
+            except Exception as ex:
+                logger.error(f"[ENGINE] Failed to send push notification: {ex}")
 
 
 ENGINE = MatchEngine()
@@ -922,6 +1021,10 @@ try:
         token: str
         text: str
         room_id: Optional[str] = None
+
+    class SubscriptionPayload(BaseModel):
+        token: str
+        subscription: dict
 
     app = FastAPI(title="Matching server (prototype_no_keys)")
 
@@ -978,6 +1081,16 @@ try:
             raise HTTPException(400, str(exc))
         return {"ok": True, "rooms": rooms_messages}
 
+    @app.get("/admin/vapid-public-key")
+    def vapid_public_key():
+        key = os.environ.get("VAPID_PUBLIC_KEY", "")
+        return {"public_key": key}
+
+    @app.post("/chat/subscribe")
+    def chat_subscribe(payload: SubscriptionPayload):
+        ENGINE.save_push_subscription(payload.token, payload.subscription)
+        return {"ok": True}
+
     @app.get("/result/{token}")
     def result(token: str):
         res = ENGINE.result_for(token)
@@ -1017,7 +1130,7 @@ try:
     def admin_reset(payload: ResetPayload):
         import hashlib
         hashed_input = hashlib.sha256(payload.password.encode('utf-8')).hexdigest()
-        if hashed_input != "f630aa1074966fc0d09d3344e4b95ed6b5878ddb967afd0a24b4f6c9ec0533b5":
+        if hashed_input != "47e52e0290d79744d781c62c5ba0c863bd745c4f47dfecac17a820899ff02915":
             raise HTTPException(403, "Invalid reset password")
         ENGINE.clear_db()
         return {"ok": True}

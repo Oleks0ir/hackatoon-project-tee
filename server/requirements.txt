@@ -2,6 +2,8 @@
 numpy
 fastapi
 uvicorn[standard]
+pywebpush
+
 
 # Optional: real AI matcher model. Without these, dating_matching_ai falls
 # back to a lightweight word-overlap scorer (pipeline still works).

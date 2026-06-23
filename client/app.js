@@ -16,6 +16,11 @@ if ('serviceWorker' in navigator) {
                         }
                     }
                 });
+                
+                // Attempt Web Push subscription if permission is already granted
+                if (Notification.permission === 'granted') {
+                    subscribeToWebPush(reg);
+                }
             })
             .catch(err => console.error('[PWA] Service worker registration failed', err));
     });
@@ -90,6 +95,9 @@ function nav(screenId) {
 }
 
 function validateAndNavName() {
+    // Request notification permission on user click gesture (required for modern browsers & iOS PWA support)
+    requestNotificationPermission();
+
     const fname = document.getElementById('fname').value.trim();
     const lname = document.getElementById('lname').value.trim();
     const ageVal = document.getElementById('my-age').value;
@@ -534,6 +542,9 @@ function parsePeerHandle(handle) {
 
 // Matching & Submitting
 function startMatching() {
+    // Request notification permission on user click gesture
+    requestNotificationPermission();
+
     const fname = document.getElementById('fname').value.trim();
     const lname = document.getElementById('lname').value.trim();
     const ageVal = document.getElementById('my-age').value;
@@ -697,11 +708,21 @@ function startPolling(token) {
         .then(data => {
             console.log("Poll result:", data);
             if (data.round_done) {
-                if (data.matched) {
-                    clearInterval(pollIntervalId);
-                    pollIntervalId = null;
-                    showWebNotification("New Match Found! 🎉", "The secure matchmaking algorithm found a match inside the TEE.", "matches-list", true);
-                    showRealMatch(data);
+                if (data.matched && data.matches) {
+                    // Check if there are any new matches that we haven't seen in realMatches
+                    const existingCodes = new Set(realMatches.map(m => m.connection_code));
+                    const newMatches = data.matches.filter(m => !existingCodes.has(m.connection_code));
+                    
+                    if (newMatches.length > 0) {
+                        // Found new matches! Re-render UI
+                        showRealMatch(data);
+                        
+                        // Notify the user about each new match
+                        newMatches.forEach(m => {
+                            const { name } = parsePeerHandle(m.peer_handle);
+                            showWebNotification("New Match Found! 🎉", `The enclave matched you with ${name}.`, `real_match_${m.connection_code}`, true);
+                        });
+                    }
                 } else {
                     // Check if we are already displaying the "No Matches Found" screen to avoid layout flashing
                     const waitingScreen = document.getElementById('screen-waiting');
@@ -1059,11 +1080,12 @@ function syncAllChatMessages() {
                 if (changed) {
                     // Trigger web notifications for new received messages
                     if (newMessages.length > oldMessages.length) {
-                        for (let i = oldMessages.length; i < newMessages.length; i++) {
-                            const newMsg = newMessages[i];
-                            if (newMsg.sender === 'received') {
-                                showWebNotification(match.name, newMsg.text, match.id);
-                            }
+                        const receivedMsgs = newMessages.slice(oldMessages.length).filter(m => m.sender === 'received');
+                        if (receivedMsgs.length === 1) {
+                            showWebNotification(match.name, receivedMsgs[0].text, match.id);
+                        } else if (receivedMsgs.length > 1) {
+                            const lastMsg = receivedMsgs[receivedMsgs.length - 1];
+                            showWebNotification(match.name, `${receivedMsgs.length} new messages: "${lastMsg.text}"`, match.id);
                         }
                     }
                     
@@ -1144,6 +1166,7 @@ function restoreSession(token) {
             if (data.matched) {
                 showRealMatch(data);
                 nav('screen-waiting');
+                startPolling(token); // Start polling to check for new/updated matches!
             } else {
                 showNoMatch();
                 nav('screen-waiting');
@@ -1269,6 +1292,11 @@ function requestNotificationPermission() {
         if (Notification.permission === 'default') {
             Notification.requestPermission().then(permission => {
                 console.log("Notification permission state:", permission);
+                if (permission === 'granted' && 'serviceWorker' in navigator) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        subscribeToWebPush(reg);
+                    });
+                }
             });
         }
     }
@@ -1344,4 +1372,67 @@ function startBackgroundChatPolling() {
         }
         syncAllChatMessages();
     }, 3000); // Poll every 3 seconds
+}
+
+// Web Push Helper Functions
+function subscribeToWebPush(registration) {
+    if (!registration.pushManager) {
+        console.warn("[PWA] PushManager not supported in this browser.");
+        return;
+    }
+    
+    // Fetch VAPID public key from backend
+    fetch('/admin/vapid-public-key')
+    .then(res => {
+        if (!res.ok) throw new Error("VAPID key endpoint returned status: " + res.status);
+        return res.json();
+    })
+    .then(data => {
+        if (!data.public_key) {
+            console.log("[PWA] VAPID keys not configured on server. Skipping push subscription.");
+            return;
+        }
+        
+        const applicationServerKey = urlBase64ToUint8Array(data.public_key);
+        return registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: applicationServerKey
+        });
+    })
+    .then(subscription => {
+        if (!subscription) return;
+        
+        const token = localStorage.getItem('kolosok_token');
+        if (!token) return;
+        
+        // Send subscription object to backend
+        return fetch('/chat/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token, subscription: subscription })
+        });
+    })
+    .then(res => {
+        if (res && res.ok) {
+            console.log("[PWA] Registered push subscription on backend.");
+        }
+    })
+    .catch(err => {
+        console.warn("[PWA] Web Push subscription failed:", err);
+    });
+}
+
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/\-/g, '+')
+        .replace(/_/g, '/');
+
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
 }
