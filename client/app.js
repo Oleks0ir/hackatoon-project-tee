@@ -17,15 +17,19 @@ if ('serviceWorker' in navigator) {
                     }
                 });
                 
-                console.log('[PWA] Notification permission state on load:', Notification.permission);
-                // Attempt Web Push subscription if permission is already granted
-                if (Notification.permission === 'granted') {
-                    navigator.serviceWorker.ready.then(activeReg => {
-                        console.log('[PWA] Service worker ready on load, starting push subscription...');
-                        subscribeToWebPush(activeReg);
-                    });
+                if ('Notification' in window) {
+                    console.log('[PWA] Notification permission state on load:', Notification.permission);
+                    // Attempt Web Push subscription if permission is already granted
+                    if (Notification.permission === 'granted') {
+                        navigator.serviceWorker.ready.then(activeReg => {
+                            console.log('[PWA] Service worker ready on load, starting push subscription...');
+                            subscribeToWebPush(activeReg);
+                        });
+                    } else {
+                        console.log('[PWA] Notification permission not granted yet. Current state:', Notification.permission);
+                    }
                 } else {
-                    console.log('[PWA] Notification permission not granted yet. Current state:', Notification.permission);
+                    console.log('[PWA] Notifications not supported in this browser.');
                 }
             })
             .catch(err => console.error('[PWA] Service worker registration failed', err));
@@ -682,7 +686,7 @@ function startMatching() {
             showToast("Profile submitted! Securing matchmaking enclave...", "success");
             
             // Subscribe to Web Push for the new token
-            if ('serviceWorker' in navigator) {
+            if ('serviceWorker' in navigator && 'Notification' in window) {
                 console.log('[PWA] Attempting push subscription for new token. Permission:', Notification.permission);
                 if (Notification.permission === 'granted') {
                     navigator.serviceWorker.ready.then(reg => {
@@ -1178,7 +1182,7 @@ function restoreSession(token) {
         console.log("Session restore poll result:", data);
         
         // Attempt Web Push subscription to ensure server has our subscription for this restored token
-        if ('serviceWorker' in navigator) {
+        if ('serviceWorker' in navigator && 'Notification' in window) {
             console.log('[PWA] Attempting push subscription for restored token. Permission:', Notification.permission);
             if (Notification.permission === 'granted') {
                 navigator.serviceWorker.ready.then(reg => {

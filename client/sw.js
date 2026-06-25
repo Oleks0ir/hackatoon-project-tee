@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kolosok-cache-v44';
+const CACHE_NAME = 'kolosok-cache-v45';
 const ASSETS = [
   './index.html',
   './style.css',
