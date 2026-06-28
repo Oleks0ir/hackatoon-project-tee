@@ -4,9 +4,18 @@
 > 
 > *A project by Team **Kolosok** (TUM Science Hackathon 2026)*
 
+## ❤️🔐 The Concept
+
+**DayTEE is a privacy-first matchmaking application (dating app) on secure enclaves**
+
+DayTEE uses private AI analysis inside secure hardware vaults (TEEs) to find highly compatible partners. By performing remote attestation, we guarantee your profile, messages, and chat metadata remain completely hidden from everyone, including the developers. Profiles and chats are invisible until our algorithm verifies a strong match. No public directories, no endless swiping, and absolute privacy.
+
+You can test the app here:
+https://34.6.215.42.sslip.io/
+
 ---
 
-## 💡 The Concept & Naming
+## 💡 Naming
 **DayTEE** is a privacy-first matchmaking application built on secure enclaves. The name is a multi-layered pun:
 1. **Dating / "Date-y" (`DayTEE`)**: Emphasizes our core goal—bringing people together for romantic connections and day dates.
 2. **Tea Time (`Tea`)**: Represents cozy, casual first-date encounters over a cup of tea. It also references "spilling the tea" (sharing your life stories in complete confidence).
@@ -61,7 +70,6 @@
 ## 🔒 Security Principles
 - **Zero public directory**: No directories, matching lists, or swipe lists exist. Users only discover each other when a highly compatible cryptographic matching channel is generated inside the enclave.
 - **Ephemeral Storage**: Server data is stored inside local RAM enclaves. Admin triggers or server power cycles wipe all memory logs automatically.
-- **Git Safety**: Local databases (`db.json` files) are automatically ignored by `.gitignore` to prevent secret leaking.
 
 -----------
 
